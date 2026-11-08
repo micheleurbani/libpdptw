@@ -1,11 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(libpdptw C CXX)
+project(libpdptw VERSION 0.2.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED True)
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 # Only export compile commands / position-independent code when this is the
 # top-level build; a consumer that pulls this in via add_subdirectory or
@@ -30,15 +28,6 @@ target_include_directories(vrp_core PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
-# Metaheuristics: tabu-embedded simulated annealing (Li & Lim 2003) and ALNS
-# (Ropke & Pisinger 2006), both C++17, both reaching into vrp_core through the
-# extern "C" blocks in include/*.h.
-add_library(vrp_algorithms
-    src/algorithms/tabu.cpp
-    src/algorithms/alns.cpp
-)
-target_link_libraries(vrp_algorithms PUBLIC vrp_core)
-
 if(LIBPDPTW_BUILD_TESTS)
     enable_testing()
 
@@ -52,22 +41,16 @@ if(LIBPDPTW_BUILD_TESTS)
     target_link_libraries(test_problem vrp_core unity m)
     add_executable(test_solution tests/test_solution.c)
     target_link_libraries(test_solution vrp_core unity m)
-    add_executable(test_tabu tests/test_tabu.cpp)
-    target_link_libraries(test_tabu vrp_algorithms unity m)
-    add_executable(test_alns tests/test_alns.cpp)
-    target_link_libraries(test_alns vrp_algorithms unity m)
 
     add_test(NAME TestRoute COMMAND test_route)
     add_test(NAME TestProblem COMMAND test_problem)
     add_test(NAME TestSolution COMMAND test_solution)
-    add_test(NAME TestTabu COMMAND test_tabu)
-    add_test(NAME TestAlns COMMAND test_alns)
 endif()
 
 # === Install / find_package support ===
 include(GNUInstallDirs)
 
-install(TARGETS vrp_core vrp_algorithms
+install(TARGETS vrp_core
     EXPORT libpdptwTargets
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}

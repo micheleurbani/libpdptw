@@ -1,23 +1,26 @@
 # libpdptw
 
-Data structures and metaheuristics for the **Pickup and Delivery Problem with
-Time Windows (PDPTW)**, extracted from [vrp](https://github.com/micheleurbani/vrp)
-so they can be reused outside that project's solver CLI.
+Solution building blocks for the **Pickup and Delivery Problem with Time
+Windows (PDPTW)**, extracted from [vrp](https://github.com/micheleurbani/vrp)
+so they can be reused outside that project's solver CLI. Search algorithms
+are not part of this library; they live in the projects that build on it.
 
-Two static libraries, no dependencies beyond libm:
+One static C99 library, no dependencies beyond libm:
 
-- **`vrp_core`** (C99) — the `PDPTW` instance, `Route`, and `Solution` data
+- **`vrp_core`** — the `PDPTW` instance, `Route`, and `Solution` data
   structures, the Modified Solomon insertion heuristic, and the PD operators
   (`pd_shift`, `pd_exchange`, `pd_rearrange`, `insert_job`, `remove_job`, …).
-- **`vrp_algorithms`** (C++17, links `vrp_core`) — two metaheuristics, each a
-  small public class (`run(Solution*)`, `get_name()`) with every tunable as a
-  constructor default:
-  - `tabu_search` — tabu-embedded simulated annealing, following Li & Lim
-    (2003), *A Metaheuristic for the Pickup and Delivery Problem with Time
-    Windows* (`docs/li-lim-2003-pdptw.md`).
-  - `alns` — Adaptive Large Neighborhood Search, following Ropke & Pisinger
-    (2006), *An Adaptive Large Neighborhood Search Heuristic for the Pickup
-    and Delivery Problem with Time Windows* (`docs/ropke2006.md`).
+
+`problem.h` and `solution.h` carry `extern "C"` guards for C++ callers;
+`route.h` and `utils.h` do not, and `solution.h` includes `route.h` outside
+its guard, so C++ code should wrap `route.h` in an `extern "C"` block before
+including the others.
+
+`docs/` holds notes on the two papers the building blocks come from: Li & Lim
+(2003), *A Metaheuristic for the Pickup and Delivery Problem with Time
+Windows* (`docs/li-lim-2003-pdptw.md`), and Ropke & Pisinger (2006), *An
+Adaptive Large Neighborhood Search Heuristic for the Pickup and Delivery
+Problem with Time Windows* (`docs/ropke2006.md`).
 
 ## Build & test
 
@@ -40,51 +43,48 @@ Via `FetchContent`:
 include(FetchContent)
 FetchContent_Declare(libpdptw
     GIT_REPOSITORY git@github.com:micheleurbani/libpdptw.git
-    GIT_TAG        v0.1.0
+    GIT_TAG        v0.2.0
 )
 FetchContent_MakeAvailable(libpdptw)
 
-target_link_libraries(your_target PRIVATE vrp_algorithms)  # pulls in vrp_core too
+target_link_libraries(your_target PRIVATE vrp_core)
 ```
 
 Or after `cmake --install`, via `find_package`:
 
 ```cmake
 find_package(libpdptw REQUIRED)
-target_link_libraries(your_target PRIVATE libpdptw::vrp_algorithms)
+target_link_libraries(your_target PRIVATE libpdptw::vrp_core)
 ```
 
 ### API sketch
 
-```cpp
-extern "C" {
+```c
 #include "problem.h"
 #include "solution.h"
-}
-#include "algorithms/tabu.hpp"   // or algorithms/alns.hpp
 
 PDPTW* problem = read_pdptw_from_file("instance.txt");   // Li & Lim text format,
                                                            // or build a PDPTW*
                                                            // by hand for another
                                                            // instance format
-Solution* initial = create_solution(problem);
-insertion_heuristic(initial, /*mu=*/1.0, /*alpha=*/0.5);
+Solution* S = create_solution(problem);
+insertion_heuristic(S, /*mu=*/1.0, /*alpha=*/0.5);
 
-tabu_search solver;                 // every tunable optional, paper defaults
-Solution* best = solver.run(initial);
+Solution* neighbour = copy_solution(S);   // mutate the copy with the PD
+                                           // operators, then update_route and
+                                           // check_route each touched route
 
-save_solution_to(best, "out/");     // Li & Lim .sol template
+save_solution_to(S, "out/");               // Li & Lim .sol template
 
-free_solution(initial);
-free_solution(best);
+free_solution(neighbour);
+free_solution(S);
 free_problem(problem);
 ```
 
 Memory is manual throughout: `create_*`/`free_*` come in pairs
 (`create_problem`/`free_problem`, `create_route`/`free_route`,
-`create_solution`/`copy_solution`/`free_solution`). `run()` does not take
-ownership of or free its `initial` argument; its return value is owned by the
-caller.
+`create_solution`/`copy_solution`/`free_solution`). A copy shares the
+problem and its job pairs with the original, so free the problem last.
 
 ### Data model
 
@@ -103,15 +103,8 @@ caller.
 ### Cost functions
 
 - `get_solution_cost(S, alpha, beta, gamma, lambda)` — priority-weighted sum
-  `NV ≫ Dist ≫ SD ≫ WT`, driving local-search descent and incumbent
-  comparison in both metaheuristics.
-- `tabu_search` additionally uses an SA-only cost (`Dist + phi·WT`,
-  `phi = 0.01·Dist`) for its Metropolis acceptance step; see `tabu.cpp`.
-
-If your problem has a different objective priority (e.g. no time windows, or
-a different lexicographic order), adapt the weight anchoring rather than just
-retuning the constants — see the constructor doc comments in
-`include/algorithms/tabu.hpp` and `include/algorithms/alns.hpp`.
+  `NV ≫ Dist ≫ SD ≫ WT`. If your problem has a different objective priority,
+  adapt the weight anchoring rather than just retuning the constants.
 
 ### Instance file format
 
@@ -123,13 +116,14 @@ for a delivery node the reverse. Node `0` is the depot.
 
 If your instances aren't in this format, skip `read_pdptw_from_file` and
 populate a `PDPTW*`/`Route*`/`Solution*` directly — the data structures and
-both metaheuristics only care that `D`/`T`/`e`/`l`/`q`/`jobs` are populated
+operators only care that `D`/`T`/`e`/`l`/`q`/`jobs` are populated
 correctly, not how they got that way.
 
 ## Provenance
 
 Split out of [vrp](https://github.com/micheleurbani/vrp) (commit `cc708e7`)
-as a standalone library so the PDPTW data structures and metaheuristics can
-be reused outside that repo's solver CLI, benchmarking, and tuning tooling.
+as a standalone library so the PDPTW data structures can be reused outside
+that repo's solver CLI, benchmarking, and tuning tooling. Version 0.1.0 also
+shipped the `vrp_algorithms` library (tabu search and ALNS); 0.2.0 removed it.
 This repo's own git history starts at that split; see the `vrp` repo for the
 prior development history of these files.

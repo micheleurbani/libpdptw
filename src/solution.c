@@ -89,9 +89,9 @@ static Route* copy_route(Route* src) {
  * observe another's mutations; the operators move pair *pointers* between the
  * routes and the ujobs list, they never write through them. Owning copies
  * instead would mean one malloc and one free per served job per clone -- on a
- * 1000-node instance the tabu search clones about M^2 solutions per descent
- * sweep, which made that per-pair traffic the dominant cost in both time and
- * memory.
+ * 1000-node instance a neighbourhood search that clones about M^2 solutions
+ * per descent sweep would make that per-pair traffic the dominant cost in both
+ * time and memory.
  *
  * The corollary is that neither free_solution nor free_route may free a pair:
  * they are the problem's, and free_problem releases them.
