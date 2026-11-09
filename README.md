@@ -27,7 +27,11 @@ One static C99 library, no dependencies beyond libm:
     objective (ties go to the smaller Δdistance).
   - `rearrange.h`: `move_to_best_position`, which moves a job to its best
     position for an objective in its own route or one empty route, and
-    `random_rearrange`, which does so for a job drawn from an `Rng`.
+    `random_rearrange`, which does so for a job drawn from an `Rng`, and
+    `route_rearrange`, which removes k ~ U[2, jobs in the route] jobs of a
+    route and reinserts each, in random order, at its best position in any
+    route that serves a job, the route itself or one empty route. It can
+    empty the route, and it takes the whole move back if a job fits nowhere.
 
 `problem.h` and `solution.h` carry `extern "C"` guards for C++ callers;
 `route.h` and `utils.h` do not, and `solution.h` includes `route.h` outside

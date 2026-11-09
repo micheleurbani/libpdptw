@@ -158,27 +158,33 @@ void test_job_lands_on_its_best_position(void) {
     TEST_ASSERT_GREATER_THAN_INT(10, checked);
 }
 
+// The first route that serves exactly one job; if none does, the first empty
+// route after its job is moved there from the first route with two or more.
+static Route* single_job_route(Solution* s) {
+    Route* single = NULL;
+    for (int i = 0; i < P->M && !single; i++) {
+        if (s->routes[i]->njobs == 1) single = s->routes[i];
+    }
+    if (single) return single;
+    Route* from = NULL;
+    for (int i = 0; i < P->M; i++) {
+        if (!from && s->routes[i]->njobs > 1) from = s->routes[i];
+        if (!single && s->routes[i]->n == 2) single = s->routes[i];
+    }
+    TEST_ASSERT_NOT_NULL(from);
+    TEST_ASSERT_NOT_NULL(single);
+    int* job = from->jobs[0];
+    remove_job(from, job);
+    update_route(P, from);
+    insert_job(single, job, 1, 2);
+    update_route(P, single);
+    return single;
+}
+
 // A route's only job can only go back into that route, now empty: the move
 // opens no other route.
 void test_single_job_route_opens_no_other_route(void) {
-    Route* single = NULL;
-    for (int i = 0; i < P->M && !single; i++) {
-        if (S->routes[i]->njobs > 1) continue;
-        if (S->routes[i]->njobs == 1) single = S->routes[i];
-    }
-    if (!single) {
-        // Make one: move the first job of route 0 into the first empty route.
-        Route* from = S->routes[0];
-        for (int i = 0; i < P->M && !single; i++) {
-            if (S->routes[i]->n == 2) single = S->routes[i];
-        }
-        TEST_ASSERT_NOT_NULL(single);
-        int* job = from->jobs[0];
-        remove_job(from, job);
-        update_route(P, from);
-        insert_job(single, job, 1, 2);
-        update_route(P, single);
-    }
+    Route* single = single_job_route(S);
     const int vehicles = count_vehicles(S);
     int* job = single->jobs[0];
     TEST_ASSERT_TRUE(move_to_best_position(S, single, job, OBJ_MAKESPAN));
@@ -203,10 +209,117 @@ void test_random_rearrange_keeps_the_solution_valid(void) {
     TEST_ASSERT_TRUE(count_vehicles(S) <= P->M);
 }
 
+// A random route that serves at least `min_jobs` jobs, or NULL if none does.
+static Route* random_route_with(Solution* s, int min_jobs, Rng* rng) {
+    Route* eligible[P->M];
+    int n = 0;
+    for (int i = 0; i < P->M; i++) {
+        if (s->routes[i]->njobs >= min_jobs) eligible[n++] = s->routes[i];
+    }
+    return n ? eligible[rng_below(rng, (uint32_t)n)] : NULL;
+}
+
+// Route rearrange moves k ~ U[2, jobs in the route] jobs: over many seeded
+// moves k never leaves those bounds and reaches both, and every move keeps
+// each job served once on feasible routes within the fleet size.
+void test_route_rearrange_moves_between_two_and_all_jobs(void) {
+    Rng rng;
+    rng_seed(&rng, 5);
+    bool saw_two = false, saw_all = false;
+    for (int step = 0; step < 300; step++) {
+        Route* r = random_route_with(S, 2, &rng);
+        TEST_ASSERT_NOT_NULL(r);
+        const int njobs = r->njobs;
+        const int k = route_rearrange(S, r, OBJECTIVES[step % 3], &rng);
+        TEST_ASSERT_TRUE(k >= 2 && k <= njobs);
+        saw_two |= k == 2;
+        saw_all |= k == njobs && njobs > 2;
+        assert_valid(S);
+        TEST_ASSERT_TRUE(count_vehicles(S) <= P->M);
+    }
+    TEST_ASSERT_TRUE(saw_two);
+    TEST_ASSERT_TRUE(saw_all);
+}
+
+static void assert_same_routes(Solution* a, Solution* b) {
+    for (int i = 0; i < P->M; i++) {
+        TEST_ASSERT_EQUAL_INT(a->routes[i]->n, b->routes[i]->n);
+        TEST_ASSERT_EQUAL_INT_ARRAY(a->routes[i]->path, b->routes[i]->path, a->routes[i]->n);
+    }
+}
+
+// On a route with one job, route rearrange is random rearrange: from the same
+// generator state it gives the same solution and leaves the same state.
+void test_route_rearrange_of_a_single_job_route_is_random_rearrange(void) {
+    const int id = single_job_route(S)->id;
+    for (int o = 0; o < 3; o++) {
+        Solution* a = copy_solution(S);
+        Solution* b = copy_solution(S);
+        Rng rng_a, rng_b;
+        rng_seed(&rng_a, 11);
+        rng_seed(&rng_b, 11);
+        TEST_ASSERT_EQUAL_INT(1, route_rearrange(a, a->routes[id], OBJECTIVES[o], &rng_a));
+        TEST_ASSERT_TRUE(random_rearrange(b, b->routes[id], OBJECTIVES[o], &rng_b));
+        assert_same_routes(a, b);
+        TEST_ASSERT_EQUAL_UINT32(rng_next(&rng_b), rng_next(&rng_a));
+        free_solution(a);
+        free_solution(b);
+    }
+}
+
+// Split two jobs of a route of `s` off into an empty route, which then serves
+// exactly those two, in a feasible order. Returns that route.
+static Route* two_jobs_split_off(Solution* s) {
+    Route* empty = NULL;
+    for (int i = 0; i < P->M && !empty; i++) {
+        if (s->routes[i]->n == 2) empty = s->routes[i];
+    }
+    TEST_ASSERT_NOT_NULL(empty);
+    for (int i = 0; i < P->M; i++) {
+        Route* from = s->routes[i];
+        for (int a = 0; a < from->njobs; a++) {
+            for (int b = a + 1; b < from->njobs; b++) {
+                int* ja = from->jobs[a];
+                int* jb = from->jobs[b];
+                insert_job(empty, ja, 1, 2);
+                insert_job(empty, jb, 3, 4);
+                if (feasible(empty) && from->njobs > 2) {
+                    remove_job(from, ja);
+                    remove_job(from, jb);
+                    update_route(P, from);
+                    return empty;
+                }
+                remove_job(empty, ja);
+                remove_job(empty, jb);
+                update_route(P, empty);
+            }
+        }
+    }
+    TEST_FAIL_MESSAGE("no two jobs fit one route");
+    return NULL;
+}
+
+// Two jobs split off a route cost less back in the other routes than on their
+// own: route rearrange moves both (k ~ U[2, 2]) and empties their route.
+void test_route_rearrange_can_empty_a_route(void) {
+    Route* r = two_jobs_split_off(S);
+    assert_valid(S);
+    const int vehicles = count_vehicles(S);
+    Rng rng;
+    rng_seed(&rng, 13);
+    TEST_ASSERT_EQUAL_INT(2, route_rearrange(S, r, OBJ_DISTANCE, &rng));
+    TEST_ASSERT_EQUAL_INT(0, r->njobs);
+    TEST_ASSERT_EQUAL_INT(vehicles - 1, count_vehicles(S));
+    assert_valid(S);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_job_lands_on_its_best_position);
     RUN_TEST(test_single_job_route_opens_no_other_route);
     RUN_TEST(test_random_rearrange_keeps_the_solution_valid);
+    RUN_TEST(test_route_rearrange_moves_between_two_and_all_jobs);
+    RUN_TEST(test_route_rearrange_of_a_single_job_route_is_random_rearrange);
+    RUN_TEST(test_route_rearrange_can_empty_a_route);
     return UNITY_END();
 }
