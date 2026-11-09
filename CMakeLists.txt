@@ -21,10 +21,15 @@ add_library(vrp_core
     src/route.c
     src/problem.c
     src/solution.c
+    src/rng.c
+    src/objectives.c
+    src/construction.c
+    lib/pcg/pcg_basic.c
 )
 target_link_libraries(vrp_core PUBLIC m)
 target_include_directories(vrp_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/lib/pcg>
     $<INSTALL_INTERFACE:include>
 )
 
@@ -41,10 +46,19 @@ if(LIBPDPTW_BUILD_TESTS)
     target_link_libraries(test_problem vrp_core unity m)
     add_executable(test_solution tests/test_solution.c)
     target_link_libraries(test_solution vrp_core unity m)
+    add_executable(test_rng tests/test_rng.c)
+    target_link_libraries(test_rng vrp_core unity m)
+    add_executable(test_objectives tests/test_objectives.c)
+    target_link_libraries(test_objectives vrp_core unity m)
+    add_executable(test_construction tests/test_construction.c)
+    target_link_libraries(test_construction vrp_core unity m)
 
     add_test(NAME TestRoute COMMAND test_route)
     add_test(NAME TestProblem COMMAND test_problem)
     add_test(NAME TestSolution COMMAND test_solution)
+    add_test(NAME TestRng COMMAND test_rng)
+    add_test(NAME TestObjectives COMMAND test_objectives)
+    add_test(NAME TestConstruction COMMAND test_construction)
 endif()
 
 # === Install / find_package support ===
@@ -57,6 +71,7 @@ install(TARGETS vrp_core
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 install(DIRECTORY include/ DESTINATION include)
+install(FILES lib/pcg/pcg_basic.h DESTINATION include)
 install(EXPORT libpdptwTargets
     FILE libpdptwTargets.cmake
     NAMESPACE libpdptw::

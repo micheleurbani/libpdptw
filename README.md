@@ -10,6 +10,17 @@ One static C99 library, no dependencies beyond libm:
 - **`vrp_core`** — the `PDPTW` instance, `Route`, and `Solution` data
   structures, the Modified Solomon insertion heuristic, and the PD operators
   (`pd_shift`, `pd_exchange`, `pd_rearrange`, `insert_job`, `remove_job`, …).
+  Also:
+  - `rng.h`: a seeded PCG32 generator (`rng_seed`, `rng_next`, `rng_below`).
+    Its state is passed explicitly, so there is no global generator and no
+    `rand()`. PCG is vendored unmodified in `lib/pcg` (see its README for the
+    pinned commit).
+  - `construction.h`: `random_construction`, which inserts jobs in a random
+    order, each at its smallest-Δdistance position, and falls back to the
+    Solomon heuristic when the fleet is too small.
+  - `objectives.h`: `evaluate_objectives`, which returns the objective
+    vector (number of vehicles, total distance, makespan, total waiting
+    time).
 
 `problem.h` and `solution.h` carry `extern "C"` guards for C++ callers;
 `route.h` and `utils.h` do not, and `solution.h` includes `route.h` outside
