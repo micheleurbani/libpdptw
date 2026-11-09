@@ -421,6 +421,102 @@ void test_check_route_rejects_service_after_window_close(void) {
     free_problem(P);
 }
 
+// A hand-built instance whose nodes lie on a line at the given x, so the
+// distance and travel time between two nodes is |x_a - x_b|. Time windows are
+// wide open and service is instant, so only capacity can make a position
+// infeasible. Node 0 is the depot; node 2k+1 picks up job k and node 2k+2
+// delivers it, with demand q[k].
+static PDPTW* line_problem(int n_jobs, const double* x, const int* q, int Q) {
+    int N = 2 * n_jobs + 1;
+    PDPTW* P = create_problem(N, "line");
+    P->M = n_jobs;
+    P->Q = Q;
+    for (int i = 0; i < N; i++) {
+        P->coords[i][0] = x[i];
+        P->coords[i][1] = 0;
+        P->e[i] = 0;
+        P->l[i] = 1000;
+        P->s[i] = 0;
+        P->q[i] = 0;
+        for (int j = 0; j < N; j++) P->D[i][j] = fabs(x[i] - x[j]);
+    }
+    for (int k = 0; k < n_jobs; k++) {
+        P->jobs[k][0] = 2 * k + 1;
+        P->jobs[k][1] = 2 * k + 2;
+        P->q[2 * k + 1] = q[k];
+        P->q[2 * k + 2] = -q[k];
+    }
+    return P;
+}
+
+// Builds the route 0 -> nodes... -> 0 and refreshes its caches.
+static Route* route_through(PDPTW* P, Solution* S, const int* nodes, int n) {
+    Route* r = S->routes[0];
+    r->path[0] = 0;
+    for (int k = 0; k < n; k++) r->path[k + 1] = nodes[k];
+    r->path[n + 1] = 0;
+    r->n = n + 2;
+    update_route(P, r);
+    return r;
+}
+
+// Capacity 10. The route carries job A (load 8) from x=10 to x=20. Job B
+// (load 5) is cheapest picked up at x=9 just before A and delivered at x=21
+// just after it, but the vehicle would then carry 13 between A's nodes. That
+// position must not be offered; any position that is offered fits.
+void test_insertion_cost_rejects_a_job_spanning_a_loaded_node(void) {
+    const double x[] = {0, 10, 20, 9, 21};
+    const int q[] = {8, 5};
+    PDPTW* P = line_problem(2, x, q, 10);
+    Solution* S = create_solution(P);
+    const int A[] = {1, 2};
+    Route* r = route_through(P, S, A, 2);
+    MoveCost cost = insertion_cost(P, r, P->jobs[1], 1, 1);
+    TEST_ASSERT_LESS_THAN_DOUBLE(BIG_M, cost.cost);
+    TEST_ASSERT_TRUE(insert_job(r, P->jobs[1], cost.pos[0], cost.pos[1]));
+    update_route(P, r);
+    TEST_ASSERT_TRUE(check_route(P, r));
+    free_solution(S);
+    free_problem(P);
+}
+
+// Capacity 10. The route serves job C (load 1) from x=5 to x=6, then job A
+// (load 8) from x=10 to x=20. Job B (load 5) at x=5.5 and x=7 fits with no
+// detour between C's pickup and delivery and between C's delivery and A's
+// pickup: it rides with C (load 6) and is gone before A is loaded. That is the
+// only position adding no distance, so it is the one offered.
+void test_insertion_cost_accepts_a_delivery_just_before_a_loaded_node(void) {
+    const double x[] = {0, 10, 20, 5, 6, 5.5, 7};
+    const int q[] = {8, 1, 5};
+    PDPTW* P = line_problem(3, x, q, 10);
+    Solution* S = create_solution(P);
+    const int CA[] = {3, 4, 1, 2};
+    Route* r = route_through(P, S, CA, 4);
+    MoveCost cost = insertion_cost(P, r, P->jobs[2], 1, 1);
+    TEST_ASSERT_EQUAL_DOUBLE(0, cost.cost);
+    TEST_ASSERT_EQUAL_INT(2, cost.pos[0]);
+    TEST_ASSERT_EQUAL_INT(4, cost.pos[1]);
+    free_solution(S);
+    free_problem(P);
+}
+
+// With capacity 50 instead of 200, equal to the largest demand on lc101,
+// capacity binds. Every route the Solomon insertion heuristic builds must still
+// pass the feasibility check, so no position it took overloads the vehicle.
+void test_insertion_heuristic_respects_a_binding_capacity(void) {
+    PDPTW* P = read_pdptw_from_file("../data/pdp_100/lc101.txt");
+    P->Q = 50;
+    P->M = P->N / 2;
+    Solution* S = create_solution(P);
+    insertion_heuristic(S, mu, alpha);
+    TEST_ASSERT_EQUAL_INT(0, S->n_ujobs);
+    for (int i = 0; i < P->M; i++) {
+        TEST_ASSERT_TRUE(check_route(P, S->routes[i]));
+    }
+    free_solution(S);
+    free_problem(P);
+}
+
 // write_solution writes each non-empty route, in order, as one "Route k :" line
 // listing its nodes without the depot, to exactly the path it is given.
 void test_write_solution_to_path(void) {
@@ -494,5 +590,8 @@ int main(void) {
     RUN_TEST(test_copy_solution);
     RUN_TEST(test_check_route_accepts_service_at_window_close);
     RUN_TEST(test_check_route_rejects_service_after_window_close);
+    RUN_TEST(test_insertion_cost_rejects_a_job_spanning_a_loaded_node);
+    RUN_TEST(test_insertion_cost_accepts_a_delivery_just_before_a_loaded_node);
+    RUN_TEST(test_insertion_heuristic_respects_a_binding_capacity);
     return UNITY_END();
 }

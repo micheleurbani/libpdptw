@@ -47,6 +47,22 @@ void test_every_route_is_feasible(void) {
     free_solution(S);
 }
 
+// With capacity 50 instead of 200, equal to the largest demand on lc101,
+// capacity binds. Every route the construction builds must still pass the
+// feasibility check, so no insertion it made overloads the vehicle.
+void test_every_route_is_feasible_when_capacity_binds(void) {
+    P->Q = 50;
+    P->M = P->N / 2;
+    for (uint64_t seed = 1; seed <= 20; seed++) {
+        Solution* S = construct(seed);
+        TEST_ASSERT_EQUAL_INT(0, S->n_ujobs);
+        for (int i = 0; i < P->M; i++) {
+            TEST_ASSERT_TRUE(check_route(P, S->routes[i]));
+        }
+        free_solution(S);
+    }
+}
+
 static void assert_same_routes(Solution* a, Solution* b) {
     for (int i = 0; i < P->M; i++) {
         TEST_ASSERT_EQUAL_INT(a->routes[i]->n, b->routes[i]->n);
@@ -94,6 +110,7 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_every_job_is_served_exactly_once);
     RUN_TEST(test_every_route_is_feasible);
+    RUN_TEST(test_every_route_is_feasible_when_capacity_binds);
     RUN_TEST(test_same_seed_gives_same_solution);
     RUN_TEST(test_falls_back_to_solomon_when_the_fleet_is_too_small);
     return UNITY_END();

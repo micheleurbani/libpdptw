@@ -303,14 +303,11 @@ MoveCost insertion_cost(PDPTW *P, Route *r, int *job, double mu, double alpha) {
             );
             // Evaluate late arrival
             if (b_d > P->l[job[1]]) break;
-            // Evaluate load only if p != job[0]
-            if (p != job[0])
-            {
-                for (size_t k = j; k > i; k--)
-                {
-                    if (r->Q[k] + P->q[job[0]] > P->Q) goto stop;
-                }
-            }
+            // The vehicle carries the job past path[i..j-1], so each load
+            // Q[i..j-1] must stay within capacity. The span only grows with
+            // j, so the first overloaded node rules out every later delivery
+            // position.
+            if (j > i && r->Q[j - 1] + P->q[job[0]] > P->Q) break;
             b_i = fmax(
                 P->e[r->path[j]],
                 b_d + P->s[job[1]] + P->T[job[1]][r->path[j]]
