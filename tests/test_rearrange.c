@@ -5,19 +5,23 @@
 #include "../include/solution.h"
 #include "../include/construction.h"
 #include "../include/rearrange.h"
+#include "../include/insertion.h"
 
 static PDPTW* P;
 static Solution* S;
+static int fleet;  // P->M as read, which a test may change
 
 // A seeded construction of lc101: 14 to 18 routes, with empty routes left.
 void setUp(void) {
     P = read_pdptw_from_file("../data/pdp_100/lc101.txt");
+    fleet = P->M;
     Rng rng;
     rng_seed(&rng, 1);
     S = random_construction(P, &rng, 10);
 }
 
 void tearDown(void) {
+    P->M = fleet;
     free_solution(S);
     free_problem(P);
 }
@@ -313,6 +317,132 @@ void test_route_rearrange_can_empty_a_route(void) {
     assert_valid(S);
 }
 
+// lc101 with a fleet of one vehicle per job, each job alone on its own route.
+// Sets P->M to that fleet; set it back before freeing S. A test that fails
+// first leaves tearDown to set it back.
+static Solution* one_job_per_route(void) {
+    P->M = P->N / 2;
+    Solution* s = create_solution(P);
+    for (int k = 0; k < P->M; k++) {
+        insert_job(s->routes[k], P->jobs[k], 1, 2);
+        update_route(P, s->routes[k]);
+    }
+    s->n_ujobs = 0;
+    return s;
+}
+
+// Emptying one-job routes into the others lowers the number of vehicles, by
+// as many routes as vehicle reduction reports, and keeps every job served
+// once on feasible routes.
+void test_vehicle_reduction_lowers_the_number_of_vehicles(void) {
+    Solution* s = one_job_per_route();
+    assert_valid(s);
+    TEST_ASSERT_EQUAL_INT(P->M, count_vehicles(s));
+    const int emptied = vehicle_reduction(s);
+    TEST_ASSERT_GREATER_THAN_INT(0, emptied);
+    TEST_ASSERT_EQUAL_INT(P->M - emptied, count_vehicles(s));
+    assert_valid(s);
+    free_solution(s);
+    P->M = fleet;
+}
+
+static void assert_same_job_lists(Solution* a, Solution* b) {
+    for (int i = 0; i < P->M; i++) {
+        TEST_ASSERT_EQUAL_INT(a->routes[i]->njobs, b->routes[i]->njobs);
+        for (int j = 0; j < a->routes[i]->njobs; j++) {
+            TEST_ASSERT_EQUAL_PTR(a->routes[i]->jobs[j], b->routes[i]->jobs[j]);
+        }
+    }
+}
+
+// Vehicle reduction stops at its first failed attempt. A second call starts
+// with that same attempt, so it empties no route and leaves the solution as
+// it was: paths, job lists and caches alike.
+void test_failed_vehicle_reduction_leaves_the_solution_unchanged(void) {
+    vehicle_reduction(S);
+    Solution* before = copy_solution(S);
+    TEST_ASSERT_EQUAL_INT(0, vehicle_reduction(S));
+    assert_same_routes(S, before);
+    assert_same_job_lists(S, before);
+    for (int i = 0; i < P->M; i++) {
+        Route* r = S->routes[i];
+        TEST_ASSERT_EQUAL_DOUBLE_ARRAY(before->routes[i]->T, r->T, r->n);
+        TEST_ASSERT_EQUAL_DOUBLE_ARRAY(before->routes[i]->D, r->D, r->n);
+    }
+    free_solution(before);
+}
+
+// Whether `job`, served by `from`, has a feasible position in another route
+// that serves a job.
+static bool fits_elsewhere(Solution* s, Route* from, int* job) {
+    for (int i = 0; i < P->M; i++) {
+        Route* t = s->routes[i];
+        if (t == from || t->njobs == 0) continue;
+        InsertionPosition* out = malloc(sizeof(InsertionPosition) * max_insertion_positions(t));
+        const int found = insertion_positions(P, t, job, out);
+        free(out);
+        if (found) return true;
+    }
+    return false;
+}
+
+// On a seeded construction of lc201, once vehicle reduction has stopped, the
+// route with the fewest jobs has one job that fits in another route and one
+// that fits nowhere. Listed first, the job that fits is moved before the
+// other fails, and the failed attempt takes it back: the solution is as it
+// was, job list order included.
+void test_failed_vehicle_reduction_takes_back_the_jobs_it_moved(void) {
+    free_solution(S);
+    free_problem(P);
+    P = read_pdptw_from_file("../data/pdp_100/lc201.txt");
+    fleet = P->M;
+    Rng rng;
+    rng_seed(&rng, 2);
+    S = random_construction(P, &rng, 10);
+    vehicle_reduction(S);
+
+    Route* fewest = NULL;
+    for (int i = 0; i < P->M; i++) {
+        Route* t = S->routes[i];
+        if (t->njobs > 0 && (!fewest || t->njobs < fewest->njobs)) fewest = t;
+    }
+    TEST_ASSERT_EQUAL_INT(2, fewest->njobs);
+    int** jobs = fewest->jobs;
+    if (!fits_elsewhere(S, fewest, jobs[0])) {
+        int* swap = jobs[0];
+        jobs[0] = jobs[1];
+        jobs[1] = swap;
+    }
+    TEST_ASSERT_TRUE(fits_elsewhere(S, fewest, jobs[0]));
+    TEST_ASSERT_FALSE(fits_elsewhere(S, fewest, jobs[1]));
+
+    Solution* before = copy_solution(S);
+    TEST_ASSERT_EQUAL_INT(0, vehicle_reduction(S));
+    assert_same_routes(S, before);
+    assert_same_job_lists(S, before);
+    assert_valid(S);
+    free_solution(before);
+}
+
+// Vehicle reduction only moves jobs into routes that already serve one: a
+// route empty before it is still empty after it.
+void test_vehicle_reduction_never_opens_a_route(void) {
+    bool was_empty[P->M];
+    int empty = 0;
+    for (int i = 0; i < P->M; i++) {
+        was_empty[i] = S->routes[i]->njobs == 0;
+        empty += was_empty[i];
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, empty);
+    const int vehicles = count_vehicles(S);
+    const int emptied = vehicle_reduction(S);
+    for (int i = 0; i < P->M; i++) {
+        if (was_empty[i]) TEST_ASSERT_EQUAL_INT(0, S->routes[i]->njobs);
+    }
+    TEST_ASSERT_EQUAL_INT(vehicles - emptied, count_vehicles(S));
+    assert_valid(S);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_job_lands_on_its_best_position);
@@ -321,5 +451,9 @@ int main(void) {
     RUN_TEST(test_route_rearrange_moves_between_two_and_all_jobs);
     RUN_TEST(test_route_rearrange_of_a_single_job_route_is_random_rearrange);
     RUN_TEST(test_route_rearrange_can_empty_a_route);
+    RUN_TEST(test_vehicle_reduction_lowers_the_number_of_vehicles);
+    RUN_TEST(test_failed_vehicle_reduction_leaves_the_solution_unchanged);
+    RUN_TEST(test_failed_vehicle_reduction_takes_back_the_jobs_it_moved);
+    RUN_TEST(test_vehicle_reduction_never_opens_a_route);
     return UNITY_END();
 }

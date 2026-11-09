@@ -37,6 +37,7 @@ int insertion_positions(PDPTW *P, Route *r, int *job, InsertionPosition *out) {
     double **D = P->D;
     double waiting_before = 0;
     for (int i = 0; i < r->n; i++) waiting_before += r->wait[i];
+    const double duration_before = r->T[r->n - 1];
 
     int count = 0;
     double prefix_waiting = 0;  // waiting at path[0..p-1]
@@ -61,7 +62,8 @@ int insertion_positions(PDPTW *P, Route *r, int *job, InsertionPosition *out) {
                             D[path[k - 1]][path[k]];
                 }
                 out[count++] = (InsertionPosition){
-                    p, k + 1, delta, v.arrival, v.waiting - waiting_before};
+                    p, k + 1, delta, v.arrival, v.waiting - waiting_before,
+                    v.arrival - duration_before};
             }
             if (!visit(P, &after_pickup, path[k])) break;
         }
@@ -75,8 +77,8 @@ bool better_position(const InsertionPosition *a, const InsertionPosition *b,
     switch (obj) {
         case OBJ_MAKESPAN: fa = a->duration; fb = b->duration; break;
         case OBJ_WAITING: fa = a->delta_waiting; fb = b->delta_waiting; break;
+        case OBJ_VEHICLES: fa = a->delta_duration; fb = b->delta_duration; break;
         case OBJ_DISTANCE:
-        case OBJ_VEHICLES:
         default: fa = a->delta_distance; fb = b->delta_distance; break;
     }
     if (fa != fb) return fa < fb;

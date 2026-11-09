@@ -22,16 +22,21 @@ One static C99 library, no dependencies beyond libm:
     vector (number of vehicles, total distance, makespan, total waiting
     time).
   - `insertion.h`: `insertion_positions`, which reports every feasible
-    position of a job in a route with its Δdistance, the new route duration
-    and Δwaiting, and `better_position`, which ranks two positions for one
+    position of a job in a route with its Δdistance, the new route
+    duration, Δwaiting and Δduration, and `better_position`, which ranks two
+    positions for one
     objective (ties go to the smaller Δdistance).
   - `rearrange.h`: `move_to_best_position`, which moves a job to its best
     position for an objective in its own route or one empty route, and
-    `random_rearrange`, which does so for a job drawn from an `Rng`, and
+    `random_rearrange`, which does so for a job drawn from an `Rng`,
     `route_rearrange`, which removes k ~ U[2, jobs in the route] jobs of a
     route and reinserts each, in random order, at its best position in any
     route that serves a job, the route itself or one empty route. It can
     empty the route, and it takes the whole move back if a job fits nowhere.
+    `vehicle_reduction` empties the route with the fewest jobs into the
+    other routes that serve a job, each job at the position that adds the
+    least route duration, and repeats until a route can't be emptied, which
+    it then restores as it was. It never opens a route.
 
 `problem.h` and `solution.h` carry `extern "C"` guards for C++ callers;
 `route.h` and `utils.h` do not, and `solution.h` includes `route.h` outside

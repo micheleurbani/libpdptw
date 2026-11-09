@@ -20,6 +20,7 @@ typedef struct InsertionPosition {
     double delta_distance;  // the route's distance after minus before
     double duration;        // the route's duration after the insertion
     double delta_waiting;   // the route's total waiting time after minus before
+    double delta_duration;  // the route's duration after minus before
 } InsertionPosition;
 
 /** The most positions insertion_positions can report for route `r`. */
@@ -43,7 +44,8 @@ int insertion_positions(PDPTW *P, Route *r, int *job, InsertionPosition *out);
  * - OBJ_DISTANCE: smaller Δdistance;
  * - OBJ_MAKESPAN: shorter duration of the route that receives the job;
  * - OBJ_WAITING:  smaller Δwaiting;
- * with ties going to the smaller Δdistance. OBJ_VEHICLES compares Δdistance.
+ * - OBJ_VEHICLES: smaller Δduration, the route duration the job adds;
+ * with ties going to the smaller Δdistance.
  */
 bool better_position(const InsertionPosition *a, const InsertionPosition *b,
                      enum Objective obj);

@@ -71,8 +71,8 @@ typedef struct Coverage {
 
 // Insert `job` at every position in a copy of `r`, recompute the copy from
 // scratch, and check that insertion_positions reports exactly the feasible
-// positions, with their Δdistance, duration and Δwaiting. Adds to `cov` what
-// the check covered.
+// positions, with their Δdistance, duration, Δwaiting and Δduration. Adds to
+// `cov` what the check covered.
 static void check_against_recomputation(PDPTW* P, Route* r, int* job, Coverage* cov) {
     InsertionPosition* out = malloc(sizeof(InsertionPosition) * max_insertion_positions(r));
     int n_out = insertion_positions(P, r, job, out);
@@ -95,6 +95,8 @@ static void check_against_recomputation(PDPTW* P, Route* r, int* job, Coverage* 
                 TEST_ASSERT_DOUBLE_WITHIN(1e-9, c->D[c->n - 1] - r->D[r->n - 1],
                                           found->delta_distance);
                 TEST_ASSERT_DOUBLE_WITHIN(1e-9, c->T[c->n - 1], found->duration);
+                TEST_ASSERT_DOUBLE_WITHIN(1e-9, c->T[c->n - 1] - r->T[r->n - 1],
+                                          found->delta_duration);
                 TEST_ASSERT_DOUBLE_WITHIN(1e-9, delta_waiting, found->delta_waiting);
             } else {
                 TEST_ASSERT_NULL_MESSAGE(found, "an infeasible position is reported");
@@ -142,6 +144,7 @@ void test_empty_route_has_one_position(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, dist, out[0].delta_distance);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, dist + 2, out[0].duration);
     TEST_ASSERT_DOUBLE_WITHIN(1e-9, 0, out[0].delta_waiting);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, dist + 2, out[0].delta_duration);
     free_route(r);
     free_problem(P);
 }
@@ -180,11 +183,26 @@ void test_better_position_breaks_ties_on_distance(void) {
     TEST_ASSERT_FALSE(better_position(&a, &a, OBJ_WAITING));
 }
 
+// Number of vehicles ranks positions on the route duration they add, not on
+// the duration of the receiving route, with ties going to the smaller
+// Δdistance.
+void test_vehicles_rank_on_added_duration(void) {
+    InsertionPosition a = {1, 2, 5, 90, 3, 20};   // shorter route, adds more
+    InsertionPosition b = {1, 2, 7, 100, 3, 10};
+    InsertionPosition c = {1, 2, 6, 100, 3, 10};  // ties b, shorter
+    TEST_ASSERT_TRUE(better_position(&a, &b, OBJ_MAKESPAN));
+    TEST_ASSERT_TRUE(better_position(&b, &a, OBJ_VEHICLES));
+    TEST_ASSERT_FALSE(better_position(&a, &b, OBJ_VEHICLES));
+    TEST_ASSERT_TRUE(better_position(&c, &b, OBJ_VEHICLES));
+    TEST_ASSERT_FALSE(better_position(&b, &c, OBJ_VEHICLES));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_positions_match_a_recomputation);
     RUN_TEST(test_empty_route_has_one_position);
     RUN_TEST(test_positions_match_a_recomputation_on_lc101);
     RUN_TEST(test_better_position_breaks_ties_on_distance);
+    RUN_TEST(test_vehicles_rank_on_added_duration);
     return UNITY_END();
 }

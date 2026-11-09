@@ -53,6 +53,25 @@ bool random_rearrange(Solution *S, Route *r, enum Objective obj, Rng *rng);
  */
 int route_rearrange(Solution *S, Route *r, enum Objective obj, Rng *rng);
 
+/**
+ * Vehicle reduction: empty the route with the fewest jobs (the first such
+ * route on ties) by moving each of its jobs, in the order of its job list, to
+ * its best position for OBJ_VEHICLES in another route that serves a job: the
+ * position that adds the least route duration, with ties going to the
+ * smaller Δdistance (see better_position in insertion.h). It never opens a
+ * route.
+ *
+ * All or nothing: if some job has no feasible position, every job moved so
+ * far is taken back, the route is restored as it was, paths and job list
+ * alike, and vehicle reduction stops. While it succeeds, it repeats on the
+ * next route with the fewest jobs. It draws no random numbers.
+ *
+ * @pre The routes' caches are fresh and every route is feasible.
+ * @post The caches of the routes involved are fresh.
+ * @return The number of routes emptied.
+ */
+int vehicle_reduction(Solution *S);
+
 #ifdef __cplusplus
 }
 #endif
