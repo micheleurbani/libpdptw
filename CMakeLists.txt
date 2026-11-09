@@ -24,6 +24,8 @@ add_library(vrp_core
     src/rng.c
     src/objectives.c
     src/construction.c
+    src/insertion.c
+    src/rearrange.c
     lib/pcg/pcg_basic.c
 )
 target_link_libraries(vrp_core PUBLIC m)
@@ -52,6 +54,10 @@ if(LIBPDPTW_BUILD_TESTS)
     target_link_libraries(test_objectives vrp_core unity m)
     add_executable(test_construction tests/test_construction.c)
     target_link_libraries(test_construction vrp_core unity m)
+    add_executable(test_insertion tests/test_insertion.c)
+    target_link_libraries(test_insertion vrp_core unity m)
+    add_executable(test_rearrange tests/test_rearrange.c)
+    target_link_libraries(test_rearrange vrp_core unity m)
 
     add_test(NAME TestRoute COMMAND test_route)
     add_test(NAME TestProblem COMMAND test_problem)
@@ -59,6 +65,8 @@ if(LIBPDPTW_BUILD_TESTS)
     add_test(NAME TestRng COMMAND test_rng)
     add_test(NAME TestObjectives COMMAND test_objectives)
     add_test(NAME TestConstruction COMMAND test_construction)
+    add_test(NAME TestInsertion COMMAND test_insertion)
+    add_test(NAME TestRearrange COMMAND test_rearrange)
 endif()
 
 # === Install / find_package support ===
