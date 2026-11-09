@@ -57,29 +57,6 @@ Solution* create_solution(PDPTW* problem) {
 }
 
 /**
- * Copy a single route, mirroring the allocations of create_route.
- *
- * The `jobs` array holds borrowed pointers into `problem->jobs`, so copying it
- * is a plain memcpy of the pointer array: the pairs themselves are shared with
- * the source route and with every other solution. See copy_solution for why
- * that is safe.
- */
-static Route* copy_route(Route* src) {
-    Route* r = create_route(src->id, src->capacity);
-    r->n = src->n;
-    r->njobs = src->njobs;
-    memcpy(r->path, src->path, src->capacity * sizeof(int));
-    memcpy(r->D, src->D, src->capacity * sizeof(double));
-    memcpy(r->T, src->T, src->capacity * sizeof(double));
-    memcpy(r->b, src->b, src->capacity * sizeof(double));
-    memcpy(r->Q, src->Q, src->capacity * sizeof(int));
-    memcpy(r->wait, src->wait, src->capacity * sizeof(double));
-    memcpy(r->slack, src->slack, src->capacity * sizeof(double));
-    memcpy(r->jobs, src->jobs, (size_t)(src->capacity / 2) * sizeof(int *));
-    return r;
-}
-
-/**
  * Create an independent copy of a solution. The clone owns its own routes and
  * unassigned-job arrays, so it can be mutated independently, but it shares the
  * read-only problem and the PD-pairs that `problem->jobs` owns.

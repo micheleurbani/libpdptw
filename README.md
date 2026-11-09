@@ -111,9 +111,11 @@ free_problem(problem);
 ```
 
 Memory is manual throughout: `create_*`/`free_*` come in pairs
-(`create_problem`/`free_problem`, `create_route`/`free_route`,
+(`create_problem`/`free_problem`, `create_route`/`copy_route`/`free_route`,
 `create_solution`/`copy_solution`/`free_solution`). A copy shares the
 problem and its job pairs with the original, so free the problem last.
+A copy costs what the solution holds: each route copies only its live
+entries, into one block.
 
 ### Data model
 
@@ -125,6 +127,13 @@ problem and its job pairs with the original, so free the problem last.
   **not** kept current by the structural ops (`pd_shift`, `insert_job`, …) —
   call `update_route` to recompute them and `check_route` to validate
   feasibility before reading any cost off a mutated route.
+  Only the first `n` path and cache entries and the first `njobs` jobs are
+  live; nothing beyond them is kept or copied. `capacity` is how many nodes
+  the arrays hold now, not a fixed `N + 2`: `create_solution` makes routes of
+  `N + 2`, `copy_route` sizes a copy to its live entries, and `insert_node`
+  (so `insert_job`) doubles the capacity of a full route. Growing moves the
+  arrays, so a pointer into `path`, a cache or `jobs` goes stale after an
+  insertion. Write past `n` directly only within `capacity`.
 - **`Solution`** (`solution.h`) — array of `routes`, list of `ujobs`
   (unassigned), and aggregate costs `TC` (travel), `SD` (schedule duration),
   `WT` (waiting time).

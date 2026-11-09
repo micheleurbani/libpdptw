@@ -2,6 +2,8 @@
 #include "../lib/unity/unity.h"
 #include "../include/problem.h"
 #include "../include/solution.h"
+#include "../include/objectives.h"
+#include "../include/config.h"
 
 static double mu;
 static double alpha;
@@ -382,6 +384,114 @@ void test_copy_solution(void) {
     free_problem(P);
 }
 
+// A route's path, caches and job list, saved to compare against later.
+typedef struct RouteSnapshot {
+    int n, njobs;
+    int path[MAX_NODES * 2], Q[MAX_NODES * 2];
+    double D[MAX_NODES * 2], T[MAX_NODES * 2], b[MAX_NODES * 2];
+    double wait[MAX_NODES * 2], slack[MAX_NODES * 2];
+    int *jobs[MAX_NODES];
+} RouteSnapshot;
+
+static void snapshot_route(const Route* r, RouteSnapshot* s) {
+    s->n = r->n;
+    s->njobs = r->njobs;
+    for (int i = 0; i < r->n; i++) {
+        s->path[i] = r->path[i];
+        s->Q[i] = r->Q[i];
+        s->D[i] = r->D[i];
+        s->T[i] = r->T[i];
+        s->b[i] = r->b[i];
+        s->wait[i] = r->wait[i];
+        s->slack[i] = r->slack[i];
+    }
+    for (int i = 0; i < r->njobs; i++) s->jobs[i] = r->jobs[i];
+}
+
+static void assert_route_matches(const RouteSnapshot* s, const Route* r) {
+    TEST_ASSERT_EQUAL_INT(s->n, r->n);
+    TEST_ASSERT_EQUAL_INT(s->njobs, r->njobs);
+    TEST_ASSERT_EQUAL_INT_ARRAY(s->path, r->path, s->n);
+    TEST_ASSERT_EQUAL_INT_ARRAY(s->Q, r->Q, s->n);
+    TEST_ASSERT_EQUAL_DOUBLE_ARRAY(s->D, r->D, s->n);
+    TEST_ASSERT_EQUAL_DOUBLE_ARRAY(s->T, r->T, s->n);
+    TEST_ASSERT_EQUAL_DOUBLE_ARRAY(s->b, r->b, s->n);
+    TEST_ASSERT_EQUAL_DOUBLE_ARRAY(s->wait, r->wait, s->n);
+    TEST_ASSERT_EQUAL_DOUBLE_ARRAY(s->slack, r->slack, s->n);
+    for (int i = 0; i < s->njobs; i++) TEST_ASSERT_TRUE(s->jobs[i] == r->jobs[i]);
+}
+
+// Moving every job of one copied route to the front of another, and filling an
+// empty copied route, grows both well past the length they had when copied.
+// The original keeps its paths, caches and objectives, and the grown routes
+// keep the nodes they had.
+void test_copy_is_independent_when_its_routes_grow(void) {
+    PDPTW* P = read_pdptw_from_file("../data/pdp_100/lc101.txt");
+    Solution* S = create_solution(P);
+    insertion_heuristic(S, 1.0, 0.5);
+    static RouteSnapshot before[MAX_NODES];
+    TEST_ASSERT_TRUE(P->M <= MAX_NODES && P->N + 2 <= 2 * MAX_NODES);
+    for (int i = 0; i < P->M; i++) snapshot_route(S->routes[i], &before[i]);
+    ObjectiveVector f_before = evaluate_objectives(S);
+
+    Solution* C = copy_solution(S);
+    // The first two routes that serve a job, and the first empty one.
+    int from = -1, to = -1, empty = -1;
+    for (int i = 0; i < P->M; i++) {
+        if (C->routes[i]->njobs > 0) {
+            if (from < 0) from = i; else if (to < 0) to = i;
+        } else if (empty < 0) {
+            empty = i;
+        }
+    }
+    TEST_ASSERT_TRUE(from >= 0 && to >= 0 && empty >= 0);
+    Route* rf = C->routes[from];
+    Route* rt = C->routes[to];
+    Route* re = C->routes[empty];
+
+    // Move all of rf's jobs to the front of rt, in job-list order, and put a
+    // second copy of each pair in the empty route: feasibility is beside the
+    // point, only the storage is under test.
+    const int moved = rf->njobs;
+    int* jobs[MAX_NODES];
+    for (int k = 0; k < moved; k++) jobs[k] = rf->jobs[k];
+    for (int k = 0; k < moved; k++) {
+        TEST_ASSERT_TRUE(remove_job(rf, jobs[k]));
+        TEST_ASSERT_TRUE(insert_job(rt, jobs[k], 1, 2));
+        TEST_ASSERT_TRUE(insert_job(re, jobs[k], 1, 2));
+    }
+    update_route(P, rf);
+    update_route(P, rt);
+    update_route(P, re);
+
+    // rt is the moved pairs, last moved first, then its own path.
+    TEST_ASSERT_EQUAL_INT(before[to].n + 2 * moved, rt->n);
+    TEST_ASSERT_EQUAL_INT(before[to].njobs + moved, rt->njobs);
+    for (int k = 0; k < moved; k++) {
+        TEST_ASSERT_EQUAL_INT(jobs[moved - 1 - k][0], rt->path[1 + 2 * k]);
+        TEST_ASSERT_EQUAL_INT(jobs[moved - 1 - k][1], rt->path[2 + 2 * k]);
+        TEST_ASSERT_EQUAL_INT(jobs[moved - 1 - k][0], re->path[1 + 2 * k]);
+    }
+    TEST_ASSERT_EQUAL_INT_ARRAY(&before[to].path[1], &rt->path[1 + 2 * moved],
+                                before[to].n - 1);
+    TEST_ASSERT_EQUAL_INT(2, rf->n);
+    TEST_ASSERT_EQUAL_INT(2 + 2 * moved, re->n);
+    // The grown route's distance cache is the distance along its path.
+    double distance = 0;
+    for (int i = 1; i < rt->n; i++) distance += P->D[rt->path[i - 1]][rt->path[i]];
+    TEST_ASSERT_DOUBLE_WITHIN(1e-9, distance, rt->D[rt->n - 1]);
+
+    for (int i = 0; i < P->M; i++) assert_route_matches(&before[i], S->routes[i]);
+    ObjectiveVector f_after = evaluate_objectives(S);
+    TEST_ASSERT_EQUAL_MEMORY(&f_before, &f_after, sizeof f_before);
+
+    // Freeing the copy leaves the original whole.
+    free_solution(C);
+    for (int i = 0; i < P->M; i++) assert_route_matches(&before[i], S->routes[i]);
+    free_solution(S);
+    free_problem(P);
+}
+
 // Builds the route depot -> pickup -> delivery -> depot for the first job of
 // lc101 and refreshes its caches. Position 2 is the delivery.
 static Route* single_job_route(PDPTW* P, Solution* S) {
@@ -588,6 +698,7 @@ int main(void) {
     RUN_TEST(test_pd_rearrange);
     RUN_TEST(test_solution_cost);
     RUN_TEST(test_copy_solution);
+    RUN_TEST(test_copy_is_independent_when_its_routes_grow);
     RUN_TEST(test_check_route_accepts_service_at_window_close);
     RUN_TEST(test_check_route_rejects_service_after_window_close);
     RUN_TEST(test_insertion_cost_rejects_a_job_spanning_a_loaded_node);

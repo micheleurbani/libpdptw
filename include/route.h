@@ -19,6 +19,10 @@ typedef struct Route {
 } Route;
 
 Route *create_route(int id, int capacity);
+/* An independent copy of src, sized to src's live entries (n nodes, njobs
+ * jobs) rather than to its capacity. The jobs are borrowed pointers, shared
+ * with src. */
+Route *copy_route(const Route *src);
 void free_route(Route *route);
 void print_route(Route *route, int verbosity);
 bool insert_node(Route *route, int id, int pos);

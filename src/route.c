@@ -1,76 +1,91 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "route.h"
 #include "problem.h"
 
-Route* create_route(int id, int capacity) {
-    Route* new_route = (Route*)malloc(sizeof(Route));
-    if (!new_route) {
+/*
+ * A route's arrays share one block, laid out as the five double caches (D, T,
+ * b, wait, slack), then `capacity / 2` job pointers, then the two int arrays
+ * (path, Q), each `capacity` long. D comes first, so it is the block's address.
+ */
+static size_t route_storage_size(int capacity) {
+    return (size_t)capacity * (5 * sizeof(double) + 2 * sizeof(int)) +
+           (size_t)(capacity / 2) * sizeof(int *);
+}
+
+static void *allocate_route_storage(int capacity, bool zeroed) {
+    void *block = zeroed ? calloc(1, route_storage_size(capacity))
+                         : malloc(route_storage_size(capacity));
+    if (!block) {
+        perror("Failed to allocate route storage.");
+        exit(EXIT_FAILURE);
+    }
+    return block;
+}
+
+/* Point r's arrays into `block`, which holds `capacity` entries. */
+static void attach_route_storage(Route *r, void *block, int capacity) {
+    double *d = block;
+    r->D = d;
+    r->T = d + capacity;
+    r->b = d + 2 * capacity;
+    r->wait = d + 3 * capacity;
+    r->slack = d + 4 * capacity;
+    r->jobs = (int **)(d + 5 * capacity);
+    int *i = (int *)(r->jobs + capacity / 2);
+    r->path = i;
+    r->Q = i + capacity;
+    r->capacity = capacity;
+}
+
+/* Give dst fresh storage for `capacity` nodes holding src's live entries --
+ * n path and cache entries, njobs jobs -- and nothing else. dst's counts must
+ * already match src's, and capacity must be at least src->n. */
+static void store_live_entries(Route *dst, const Route *src, int capacity) {
+    attach_route_storage(dst, allocate_route_storage(capacity, false), capacity);
+    const size_t n = (size_t)src->n;
+    memcpy(dst->path, src->path, n * sizeof(int));
+    memcpy(dst->Q, src->Q, n * sizeof(int));
+    memcpy(dst->D, src->D, n * sizeof(double));
+    memcpy(dst->T, src->T, n * sizeof(double));
+    memcpy(dst->b, src->b, n * sizeof(double));
+    memcpy(dst->wait, src->wait, n * sizeof(double));
+    memcpy(dst->slack, src->slack, n * sizeof(double));
+    memcpy(dst->jobs, src->jobs, (size_t)src->njobs * sizeof(int *));
+}
+
+static Route *allocate_route(void) {
+    Route *r = malloc(sizeof(Route));
+    if (!r) {
         perror("Failed to allocate route.");
         exit(EXIT_FAILURE);
-    };
+    }
+    return r;
+}
+
+Route* create_route(int id, int capacity) {
+    Route* new_route = allocate_route();
     new_route->id = id;
     new_route->n = 2;
     new_route->njobs = 0;
-    new_route->capacity = capacity;
-    new_route->path = (int*)calloc(capacity, sizeof(int));
-    if (!new_route->path) {
-        perror("Failed to allocate space for node pointers.");
-        exit(EXIT_FAILURE);
-    }
-    new_route->path[0] = 0;
-    new_route->path[1] = 0;
-    new_route->D = (double*)calloc(capacity, sizeof(double));
-    if (!new_route->D) {
-        perror("Failed to allocate route distance.");
-        exit(EXIT_FAILURE);
-    };
-    new_route->T = (double*)calloc(capacity, sizeof(double));
-    if (!new_route->T) {
-        perror("Failed to allocate route time.");
-        exit(EXIT_FAILURE);
-    };
-    new_route->b = (double*)calloc(capacity, sizeof(double));
-    if (!new_route->b) {
-        perror("Failed to allocate begin activity time.");
-        exit(EXIT_FAILURE);
-    };
-    new_route->Q = (int*)calloc(capacity, sizeof(int));
-    if (!new_route->Q) {
-        perror("Failed to allocate route load.");
-        exit(EXIT_FAILURE);
-    };
-    new_route->wait = (double*)calloc(capacity, sizeof(double));
-    if (!new_route->wait) {
-        perror("Failed to allocate route wait time.");
-        exit(EXIT_FAILURE);
-    };
-    new_route->slack = (double*)calloc(capacity, sizeof(double));
-    if (!new_route->slack) {
-        perror("Failed to allocate route slack array.");
-        exit(EXIT_FAILURE);
-    };
-    new_route->jobs = (int**)malloc(capacity / 2 * sizeof(int*));
-    if (!new_route->jobs) {
-        perror("Failed to allocate space for jobs pointers.");
-        exit(EXIT_FAILURE);
-    }
-    for (size_t i = 0; i < (size_t)(capacity / 2); i++)
-    {
-        new_route->jobs[i] = NULL;
-    }
+    // Zeroed: path is all depots, every cache 0 and every job pointer NULL.
+    attach_route_storage(new_route, allocate_route_storage(capacity, true), capacity);
     return new_route;
 }
 
+Route *copy_route(const Route *src) {
+    Route *r = allocate_route();
+    r->id = src->id;
+    r->n = src->n;
+    r->njobs = src->njobs;
+    // Room for one more job, so a single insertion doesn't grow the copy.
+    store_live_entries(r, src, src->n + 2);
+    return r;
+}
+
 void free_route(Route* route) {
-    free(route->path);
-    free(route->D);
-    free(route->T);
-    free(route->b);
-    free(route->Q);
-    free(route->wait);
-    free(route->slack);
-    free(route->jobs);
+    free(route->D);  // the start of the route's storage block
     free(route);
 }
 
@@ -101,11 +116,22 @@ void print_route(Route* route, int verbosity) {
     printf("\n");
 }
 
+/* Make room for at least one more node, doubling the capacity if the route is
+ * full. This moves the route's arrays, so pointers into them go stale. */
+static void reserve_one_more_node(Route *r) {
+    if (r->n < r->capacity) return;
+    Route grown = *r;
+    store_live_entries(&grown, r, 2 * r->capacity);
+    free(r->D);
+    *r = grown;
+}
+
 bool insert_node(Route* r, int id, int pos) {
     if (pos == 0 || pos == r->n) {
         printf("Cannot move the depot.\n");
         return false;
     }
+    reserve_one_more_node(r);
     for (size_t i = r->n; i > pos; i--)
     {
         r->path[i] = r->path[i - 1];
@@ -147,7 +173,7 @@ bool remove_node(Route* r, int pos) {
         printf("Cannot remove the depot.\n");
         return false;
     }
-    for (size_t i = pos; i < r->n; i++)
+    for (size_t i = pos; i < r->n - 1; i++)
     {
         r->path[i] = r->path[i+1];
     }
@@ -169,7 +195,8 @@ bool remove_node_by_id(Route* r, int id) {
         return false;
     }
     int advance_node = 0;
-    for (size_t i = 0; i < r->n; i++)
+    // The last node is the dummy depot, never `id`, so it is only shifted.
+    for (size_t i = 0; i < r->n - 1; i++)
     {
         if (r->path[i] == id || advance_node)
         {
