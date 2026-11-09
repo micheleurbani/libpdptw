@@ -198,9 +198,9 @@ bool check_route(PDPTW *P, Route *r) {
             feasible = false;
         }
         // Late TW
-        if (r->b[i] >= P->l[r->path[i]])
+        if (r->b[i] > P->l[r->path[i]])
         {
-            printf("Service of node %d begins at %lf (>= %lf)\n", r->path[i], r->b[i], P->l[r->path[i]]);
+            printf("Service of node %d begins at %lf (> %lf)\n", r->path[i], r->b[i], P->l[r->path[i]]);
             feasible = false;
         }
         // Load

@@ -382,6 +382,45 @@ void test_copy_solution(void) {
     free_problem(P);
 }
 
+// Builds the route depot -> pickup -> delivery -> depot for the first job of
+// lc101 and refreshes its caches. Position 2 is the delivery.
+static Route* single_job_route(PDPTW* P, Solution* S) {
+    Route* r = S->routes[0];
+    r->path[1] = S->ujobs[0][0];
+    r->path[2] = S->ujobs[0][1];
+    r->path[3] = 0;
+    r->n = 4;
+    update_route(P, r);
+    return r;
+}
+
+// Service may begin exactly when a node's time window closes: the window is
+// the closed interval [e, l].
+void test_check_route_accepts_service_at_window_close(void) {
+    PDPTW* P = read_pdptw_from_file("../data/pdp_100/lc101.txt");
+    Solution* S = create_solution(P);
+    Route* r = single_job_route(P, S);
+    int delivery = r->path[2];
+    P->l[delivery] = r->b[2];
+    TEST_ASSERT_TRUE(check_route(P, r));
+    free_solution(S);
+    free_problem(P);
+}
+
+// Arriving after a node's window closes makes the route infeasible. The window
+// opens at 0, so service begins on arrival, one time unit after the close.
+void test_check_route_rejects_service_after_window_close(void) {
+    PDPTW* P = read_pdptw_from_file("../data/pdp_100/lc101.txt");
+    Solution* S = create_solution(P);
+    Route* r = single_job_route(P, S);
+    int delivery = r->path[2];
+    P->e[delivery] = 0;
+    P->l[delivery] = r->T[2] - 1;
+    TEST_ASSERT_FALSE(check_route(P, r));
+    free_solution(S);
+    free_problem(P);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_empty_solution);
@@ -400,5 +439,7 @@ int main(void) {
     RUN_TEST(test_pd_rearrange);
     RUN_TEST(test_solution_cost);
     RUN_TEST(test_copy_solution);
+    RUN_TEST(test_check_route_accepts_service_at_window_close);
+    RUN_TEST(test_check_route_rejects_service_after_window_close);
     return UNITY_END();
 }
