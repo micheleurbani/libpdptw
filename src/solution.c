@@ -861,6 +861,18 @@ bool pd_rearrange(Solution *S, Route *r, double mu, double alpha) {
     return true;
 }
 
+/* The instance name without directory or extension, as the .sol header wants. */
+static void instance_stem(const PDPTW *problem, char *out, size_t size)
+{
+    const char *path = problem->instance_name;
+    const char *basename = strrchr(path, '/');
+    basename = basename ? basename + 1 : path;
+    strncpy(out, basename, size);
+    out[size - 1] = '\0';
+    char *dot = strrchr(out, '.');
+    if (dot) *dot = '\0';
+}
+
 int save_solution(Solution *solution)
 {
     return save_solution_to(solution, NULL);
@@ -868,21 +880,8 @@ int save_solution(Solution *solution)
 
 int save_solution_to(Solution *solution, const char *dir)
 {
-    // Extract the file name from the instance_name path
-    const char *path = solution->problem->instance_name;
-    const char *basename = strrchr(path, '/');
-    if (basename != NULL) {
-        basename++; // Move past the '/'
-    } else {
-        basename = path; // No '/' found
-    }
-
-    // Extract instance name (remove extension)
     char instance_name[256];
-    strncpy(instance_name, basename, sizeof(instance_name));
-    instance_name[sizeof(instance_name) - 1] = '\0';
-    char *dot = strrchr(instance_name, '.');
-    if (dot) *dot = '\0';
+    instance_stem(solution->problem, instance_name, sizeof(instance_name));
 
     // Create new file name: instance_name + ".sol", under `dir` when given.
     // A NULL or empty `dir` keeps the historical current-working-directory
@@ -896,11 +895,20 @@ int save_solution_to(Solution *solution, const char *dir)
         snprintf(filename, sizeof(filename), "%s.sol", instance_name);
     }
 
-    FILE* file = fopen(filename, "w");
-    if (file == NULL) {
+    if (!write_solution(solution, filename)) {
         perror("Error opening file");
         return 0;
     }
+    return 1;
+}
+
+int write_solution(Solution *solution, const char *path)
+{
+    char instance_name[256];
+    instance_stem(solution->problem, instance_name, sizeof(instance_name));
+
+    FILE* file = fopen(path, "w");
+    if (file == NULL) return 0;
 
     // Get current date
     time_t t = time(NULL);

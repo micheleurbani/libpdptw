@@ -79,6 +79,11 @@ int save_solution(Solution *solution);
  * is exactly what save_solution() passes. */
 int save_solution_to(Solution *solution, const char *dir);
 
+/* Write the solution in Li & Lim format to exactly `path`, so a caller can put
+ * several solutions of one instance in one directory. Returns 1 on success and
+ * 0 if the file cannot be opened. */
+int write_solution(Solution *solution, const char *path);
+
 #ifdef __cplusplus
 }
 #endif

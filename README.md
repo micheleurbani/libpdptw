@@ -85,7 +85,9 @@ Solution* neighbour = copy_solution(S);   // mutate the copy with the PD
                                            // operators, then update_route and
                                            // check_route each touched route
 
-save_solution_to(S, "out/");               // Li & Lim .sol template
+save_solution_to(S, "out/");               // Li & Lim .sol template, named
+                                           // after the instance
+write_solution(neighbour, "out/1.sol");    // same format, to an exact path
 
 free_solution(neighbour);
 free_solution(S);

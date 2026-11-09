@@ -421,6 +421,55 @@ void test_check_route_rejects_service_after_window_close(void) {
     free_problem(P);
 }
 
+// write_solution writes each non-empty route, in order, as one "Route k :" line
+// listing its nodes without the depot, to exactly the path it is given.
+void test_write_solution_to_path(void) {
+    PDPTW* P = read_pdptw_from_file("../data/pdp_100/lc101.txt");
+    Solution* S = create_solution(P);
+    insertion_heuristic(S, mu, alpha);
+    const char* path = "write_solution_test.sol";
+    remove(path);
+    TEST_ASSERT_TRUE(write_solution(S, path));
+
+    FILE* f = fopen(path, "r");
+    TEST_ASSERT_NOT_NULL(f);
+    char line[4096];
+    int route = 0;  // index into S->routes
+    int written = 0;
+    while (fgets(line, sizeof(line), f)) {
+        int k, offset;
+        if (sscanf(line, "Route %d :%n", &k, &offset) != 1) continue;
+        written++;
+        TEST_ASSERT_EQUAL_INT(written, k);
+        while (S->routes[route]->n <= 2) route++;
+        Route* r = S->routes[route++];
+        char* cursor = line + offset;
+        for (int j = 1; j < r->n - 1; j++) {
+            int node, used;
+            TEST_ASSERT_EQUAL_INT(1, sscanf(cursor, "%d%n", &node, &used));
+            TEST_ASSERT_EQUAL_INT(r->path[j], node);
+            cursor += used;
+        }
+        int extra;
+        TEST_ASSERT_EQUAL_INT(-1, sscanf(cursor, "%d", &extra));
+    }
+    fclose(f);
+    TEST_ASSERT_EQUAL_INT(count_vehicles(S), written);
+    remove(path);
+    free_solution(S);
+    free_problem(P);
+}
+
+// A path that cannot be opened is reported as a failure, not a crash.
+void test_write_solution_reports_unwritable_path(void) {
+    PDPTW* P = read_pdptw_from_file("../data/pdp_100/lc101.txt");
+    Solution* S = create_solution(P);
+    insertion_heuristic(S, mu, alpha);
+    TEST_ASSERT_FALSE(write_solution(S, "no/such/directory/x.sol"));
+    free_solution(S);
+    free_problem(P);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_empty_solution);
@@ -432,6 +481,8 @@ int main(void) {
     RUN_TEST(test_insertion_heuristic);
     RUN_TEST(test_insertion_heuristic_feasible);
     RUN_TEST(test_save_solution);
+    RUN_TEST(test_write_solution_to_path);
+    RUN_TEST(test_write_solution_reports_unwritable_path);
     RUN_TEST(test_worst_cost_removal);
     RUN_TEST(test_worst_cost_removal_long);
     RUN_TEST(test_pd_shift);
