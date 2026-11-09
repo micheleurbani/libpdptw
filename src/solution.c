@@ -941,8 +941,10 @@ int write_solution(Solution *solution, const char *path)
         }
         fprintf(file, "\n");
     }
-    fclose(file);
-    return 1;
+    // A write error (e.g. a full disk) shows up in the stream or at close.
+    int failed = ferror(file);
+    if (fclose(file) != 0) failed = 1;
+    return !failed;
 }
 
 /**

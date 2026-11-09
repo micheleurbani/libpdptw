@@ -466,6 +466,8 @@ void test_write_solution_reports_unwritable_path(void) {
     Solution* S = create_solution(P);
     insertion_heuristic(S, mu, alpha);
     TEST_ASSERT_FALSE(write_solution(S, "no/such/directory/x.sol"));
+    // Opens, but every write fails as on a full disk (Linux).
+    TEST_ASSERT_FALSE(write_solution(S, "/dev/full"));
     free_solution(S);
     free_problem(P);
 }
