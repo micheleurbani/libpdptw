@@ -27,6 +27,7 @@ add_library(vrp_core
     src/insertion.c
     src/placement.c
     src/rearrange.c
+    src/crossover.c
     lib/pcg/pcg_basic.c
 )
 target_link_libraries(vrp_core PUBLIC m)
@@ -59,6 +60,8 @@ if(LIBPDPTW_BUILD_TESTS)
     target_link_libraries(test_insertion vrp_core unity m)
     add_executable(test_rearrange tests/test_rearrange.c)
     target_link_libraries(test_rearrange vrp_core unity m)
+    add_executable(test_crossover tests/test_crossover.c)
+    target_link_libraries(test_crossover vrp_core unity m)
 
     add_test(NAME TestRoute COMMAND test_route)
     add_test(NAME TestProblem COMMAND test_problem)
@@ -68,6 +71,7 @@ if(LIBPDPTW_BUILD_TESTS)
     add_test(NAME TestConstruction COMMAND test_construction)
     add_test(NAME TestInsertion COMMAND test_insertion)
     add_test(NAME TestRearrange COMMAND test_rearrange)
+    add_test(NAME TestCrossover COMMAND test_crossover)
 endif()
 
 # === Install / find_package support ===

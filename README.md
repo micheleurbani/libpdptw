@@ -42,6 +42,12 @@ One static C99 library, no dependencies beyond libm:
     other routes that serve a job, each job at the position that adds the
     least route duration, and repeats until a route can't be emptied, which
     it then restores as it was. It never opens a route.
+  - `crossover.h`: `crossover`, which builds an offspring from two
+    solutions: k ~ U[1, n − 1] of the first parent's n routes, the second
+    parent's routes that share no job with them while the fleet has an
+    unused route, and every remaining job at its best position for a
+    criterion, opening a route only for a job that fits in none. It returns
+    NULL when a job fits nowhere and no route is left.
 
 `problem.h` and `solution.h` carry `extern "C"` guards for C++ callers;
 `route.h` and `utils.h` do not, and `solution.h` includes `route.h` outside
