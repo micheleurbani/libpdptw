@@ -81,7 +81,7 @@ Via `FetchContent`:
 include(FetchContent)
 FetchContent_Declare(libpdptw
     GIT_REPOSITORY git@github.com:micheleurbani/libpdptw.git
-    GIT_TAG        v0.3.0
+    GIT_TAG        v0.4.0
 )
 FetchContent_MakeAvailable(libpdptw)
 
