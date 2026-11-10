@@ -25,9 +25,14 @@ One static C99 library, no dependencies beyond libm:
     position of a job in a route with its Δdistance, the new route
     duration, Δwaiting and Δduration, and `better_position`, which ranks two
     positions for one
-    objective (ties go to the smaller Δdistance).
+    objective (ties go to the smaller Δdistance). A `Criterion` says what a
+    best position is judged on: one objective (`objective_criterion`), or
+    a weighted sum of all four (`weighted_criterion`, one weight per unit of
+    each raw objective), where the best position is the one with the
+    smallest exact change in the sum, counting a route it opens and the
+    change in the longest route duration.
   - `rearrange.h`: `move_to_best_position`, which moves a job to its best
-    position for an objective in its own route or one empty route, and
+    position for a criterion in its own route or one empty route, and
     `random_rearrange`, which does so for a job drawn from an `Rng`,
     `route_rearrange`, which removes k ~ U[2, jobs in the route] jobs of a
     route and reinserts each, in random order, at its best position in any

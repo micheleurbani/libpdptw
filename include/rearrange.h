@@ -2,6 +2,7 @@
 #define REARRANGE_H
 #include "solution.h"
 #include "objectives.h"
+#include "insertion.h"
 #include "rng.h"
 
 #ifdef __cplusplus
@@ -9,8 +10,8 @@ extern "C" {
 #endif
 
 /**
- * Move `job`, which `r` serves, to its best position for objective `obj`
- * (see better_position in insertion.h). The candidate routes are `r` itself,
+ * Move `job`, which `r` serves, to its best position for criterion `c` (see
+ * Criterion in insertion.h). The candidate routes are `r` itself,
  * without the job, and one empty route of the solution, if any; so the move
  * never exceeds the fleet size.
  *
@@ -22,20 +23,20 @@ extern "C" {
  * @post The caches of the routes involved are fresh.
  * @return Whether the job was placed at a best position.
  */
-bool move_to_best_position(Solution *S, Route *r, int *job, enum Objective obj);
+bool move_to_best_position(Solution *S, Route *r, int *job, const Criterion *c);
 
 /**
  * Random rearrange: move one job of `r`, drawn uniformly from `rng`, to its
- * best position for `obj` with move_to_best_position.
+ * best position for `c` with move_to_best_position.
  *
  * @pre `r` serves at least one job; see move_to_best_position.
  */
-bool random_rearrange(Solution *S, Route *r, enum Objective obj, Rng *rng);
+bool random_rearrange(Solution *S, Route *r, const Criterion *c, Rng *rng);
 
 /**
  * Route rearrange: remove k jobs of `r`, drawn from `rng` with
  * k ~ U[2, r->njobs], then reinsert them one at a time, in random order, each
- * at its best position for `obj` (see better_position in insertion.h). The
+ * at its best position for `c` (see Criterion in insertion.h). The
  * candidate routes for each job are every route that serves a job, `r` itself
  * and one empty route, so `r` may end up empty and the move never exceeds the
  * fleet size; a move that fills one empty route may open another.
@@ -51,7 +52,7 @@ bool random_rearrange(Solution *S, Route *r, enum Objective obj, Rng *rng);
  * @post The caches of the routes involved are fresh.
  * @return The number of jobs moved, or 0 if the move was taken back.
  */
-int route_rearrange(Solution *S, Route *r, enum Objective obj, Rng *rng);
+int route_rearrange(Solution *S, Route *r, const Criterion *c, Rng *rng);
 
 /**
  * Vehicle reduction: empty the route with the fewest jobs (the first such

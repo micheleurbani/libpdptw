@@ -2,6 +2,7 @@
 #include <string.h>
 #include "rearrange.h"
 #include "insertion.h"
+#include "placement.h"
 
 static int position_of(const Route *r, int node) {
     for (int i = 0; i < r->n; i++) {
@@ -10,39 +11,7 @@ static int position_of(const Route *r, int node) {
     return -1;
 }
 
-/*
- * Insert `job` at its best position for `obj` over the `n` candidate routes,
- * and refresh the receiving route's caches. Returns that route, or NULL, with
- * nothing changed, if no candidate has a feasible position.
- */
-static Route *insert_at_best_position(PDPTW *P, Route **candidates, int n, int *job,
-                                      enum Objective obj) {
-    int room = 0;
-    for (int k = 0; k < n; k++) {
-        const int m = max_insertion_positions(candidates[k]);
-        if (m > room) room = m;
-    }
-    InsertionPosition *positions = malloc(sizeof(InsertionPosition) * room);
-    InsertionPosition best;
-    Route *target = NULL;
-    for (int k = 0; k < n; k++) {
-        const int found = insertion_positions(P, candidates[k], job, positions);
-        for (int i = 0; i < found; i++) {
-            if (!target || better_position(&positions[i], &best, obj)) {
-                best = positions[i];
-                target = candidates[k];
-            }
-        }
-    }
-    free(positions);
-    if (target) {
-        insert_job(target, job, best.pickup, best.delivery);
-        update_route(P, target);
-    }
-    return target;
-}
-
-bool move_to_best_position(Solution *S, Route *r, int *job, enum Objective obj) {
+bool move_to_best_position(Solution *S, Route *r, int *job, const Criterion *c) {
     PDPTW *P = S->problem;
     // insert_job at these positions restores the route as it was.
     const int pickup = position_of(r, job[0]);
@@ -58,15 +27,15 @@ bool move_to_best_position(Solution *S, Route *r, int *job, enum Objective obj) 
             break;
         }
     }
-    if (insert_at_best_position(P, candidates, n, job, obj)) return true;
+    if (insert_at_best_position(S, candidates, n, job, c)) return true;
     insert_job(r, job, pickup, delivery);
     update_route(P, r);
     return false;
 }
 
-bool random_rearrange(Solution *S, Route *r, enum Objective obj, Rng *rng) {
+bool random_rearrange(Solution *S, Route *r, const Criterion *c, Rng *rng) {
     int *job = r->jobs[rng_below(rng, (uint32_t)r->njobs)];
-    return move_to_best_position(S, r, job, obj);
+    return move_to_best_position(S, r, job, c);
 }
 
 /* Whether a job being relocated may go to an empty route. */
@@ -91,13 +60,13 @@ static int relocation_candidates(Solution *S, enum Opening opening, Route **out)
 
 /*
  * Remove jobs[0..k-1] from `r`, then insert them one at a time, in that
- * order, each at its best position for `obj` over every route that serves a
+ * order, each at its best position for `c` over every route that serves a
  * job and, if `opening` allows, the first empty route; the routes are re-read before
  * each insertion. If some job has no feasible position, every job placed so
  * far is taken back and `r` is restored as it was, paths and job list alike.
  * Returns whether every job was placed.
  */
-static bool relocate_jobs(Solution *S, Route *r, int **jobs, int k, enum Objective obj,
+static bool relocate_jobs(Solution *S, Route *r, int **jobs, int k, const Criterion *c,
                           enum Opening opening) {
     PDPTW *P = S->problem;
     const int njobs = r->njobs;
@@ -119,7 +88,7 @@ static bool relocate_jobs(Solution *S, Route *r, int **jobs, int k, enum Objecti
     int moved = 0;
     for (; moved < k; moved++) {
         const int n = relocation_candidates(S, opening, candidates);
-        placed[moved] = insert_at_best_position(P, candidates, n, jobs[moved], obj);
+        placed[moved] = insert_at_best_position(S, candidates, n, jobs[moved], c);
         if (!placed[moved]) break;
     }
 
@@ -146,9 +115,9 @@ static bool relocate_jobs(Solution *S, Route *r, int **jobs, int k, enum Objecti
     return all;
 }
 
-int route_rearrange(Solution *S, Route *r, enum Objective obj, Rng *rng) {
+int route_rearrange(Solution *S, Route *r, const Criterion *c, Rng *rng) {
     const int njobs = r->njobs;
-    if (njobs == 1) return random_rearrange(S, r, obj, rng) ? 1 : 0;
+    if (njobs == 1) return random_rearrange(S, r, c, rng) ? 1 : 0;
     const int k = 2 + (int)rng_below(rng, (uint32_t)(njobs - 1));
 
     // A partial Fisher-Yates shuffle: jobs[0..k-1] is a uniform sample of the
@@ -161,7 +130,7 @@ int route_rearrange(Solution *S, Route *r, enum Objective obj, Rng *rng) {
         jobs[i] = jobs[j];
         jobs[j] = swap;
     }
-    const bool moved = relocate_jobs(S, r, jobs, k, obj, MAY_OPEN_ROUTE);
+    const bool moved = relocate_jobs(S, r, jobs, k, c, MAY_OPEN_ROUTE);
     free(jobs);
     return moved ? k : 0;
 }
@@ -181,12 +150,13 @@ static Route *fewest_jobs_route(Solution *S) {
 }
 
 int vehicle_reduction(Solution *S) {
+    const Criterion least_duration = objective_criterion(OBJ_VEHICLES);
     int emptied = 0;
     Route *r;
     while ((r = fewest_jobs_route(S))) {
         int **jobs = malloc(sizeof(int *) * r->njobs);
         memcpy(jobs, r->jobs, sizeof(int *) * r->njobs);
-        const bool moved = relocate_jobs(S, r, jobs, r->njobs, OBJ_VEHICLES, NO_NEW_ROUTE);
+        const bool moved = relocate_jobs(S, r, jobs, r->njobs, &least_duration, NO_NEW_ROUTE);
         free(jobs);
         if (!moved) break;
         emptied++;

@@ -50,6 +50,31 @@ int insertion_positions(PDPTW *P, Route *r, int *job, InsertionPosition *out);
 bool better_position(const InsertionPosition *a, const InsertionPosition *b,
                      enum Objective obj);
 
+/**
+ * What a best position is judged on.
+ *
+ * - One objective (`weighted` false): better_position for `objective`.
+ * - A weighted sum (`weighted` true): the position whose insertion changes
+ *   the sum over objectives of weights[k] * f_k the least, where each weight
+ *   is per unit of its raw objective. Δf1 is 1 if the receiving route served
+ *   no job, Δf2 is Δdistance, Δf3 is the change in the solution's longest
+ *   route duration and Δf4 is Δwaiting. Ties go to the smaller Δdistance.
+ *
+ * Build one with objective_criterion or weighted_criterion.
+ */
+typedef struct Criterion {
+    bool weighted;
+    enum Objective objective;        // when not weighted
+    double weights[NUM_OBJECTIVES];  // when weighted
+} Criterion;
+
+/** Judge positions on objective `obj` alone. */
+Criterion objective_criterion(enum Objective obj);
+
+/** Judge positions on the weighted sum with `weights`, one per unit of each
+ *  raw objective, indexed by enum Objective. */
+Criterion weighted_criterion(const double weights[NUM_OBJECTIVES]);
+
 #ifdef __cplusplus
 }
 #endif

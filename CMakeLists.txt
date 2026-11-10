@@ -25,6 +25,7 @@ add_library(vrp_core
     src/objectives.c
     src/construction.c
     src/insertion.c
+    src/placement.c
     src/rearrange.c
     lib/pcg/pcg_basic.c
 )

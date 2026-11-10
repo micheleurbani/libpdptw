@@ -84,3 +84,14 @@ bool better_position(const InsertionPosition *a, const InsertionPosition *b,
     if (fa != fb) return fa < fb;
     return a->delta_distance < b->delta_distance;
 }
+
+Criterion objective_criterion(enum Objective obj) {
+    Criterion c = {false, obj, {0}};
+    return c;
+}
+
+Criterion weighted_criterion(const double weights[NUM_OBJECTIVES]) {
+    Criterion c = {true, OBJ_DISTANCE, {0}};
+    for (int k = 0; k < NUM_OBJECTIVES; k++) c.weights[k] = weights[k];
+    return c;
+}
