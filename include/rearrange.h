@@ -55,6 +55,47 @@ bool random_rearrange(Solution *S, Route *r, const Criterion *c, Rng *rng);
 int route_rearrange(Solution *S, Route *r, const Criterion *c, Rng *rng);
 
 /**
+ * PD-shift (Li & Lim 2003): move one job of `r1`, drawn uniformly from `rng`,
+ * to its best position for `c` in `r2` (see Criterion in insertion.h). `r2`
+ * may be empty, in which case the move opens it, and moving `r1`'s only job
+ * empties `r1`; no other route is touched, so the move never exceeds the
+ * fleet size.
+ *
+ * All or nothing: if the job has no feasible position in `r2`, it is put
+ * back where it was, in `r1`'s path and job list alike, and nothing moves.
+ *
+ * If `r1` serves no job, or `r1` and `r2` are the same route, nothing moves
+ * and no random number is drawn: moving a job within its own route is what
+ * random_rearrange does.
+ *
+ * @pre The routes' caches are fresh and every route is feasible.
+ * @post The caches of `r1` and `r2` are fresh.
+ * @return Whether the job moved.
+ */
+bool pd_shift(Solution *S, Route *r1, Route *r2, const Criterion *c, Rng *rng);
+
+/**
+ * PD-exchange (Li & Lim 2003): swap a job a of `r1` with a job b of `r2`,
+ * each drawn uniformly from `rng`, a first. Both leave their routes, then
+ * each goes to its best position for `c` (see Criterion in insertion.h) in
+ * the other route, in this order: a into `r2` without b, then b into `r1`
+ * without a, with a already in `r2`. The order matters only to a weighted
+ * criterion, whose change in makespan is measured against every route. No
+ * other route is touched.
+ *
+ * All or nothing: if a or b has no feasible position, both routes are
+ * restored as they were, paths and job lists alike, and nothing moves.
+ *
+ * If either route serves no job, or `r1` and `r2` are the same route, nothing
+ * moves and no random number is drawn.
+ *
+ * @pre The routes' caches are fresh and every route is feasible.
+ * @post The caches of `r1` and `r2` are fresh.
+ * @return Whether the jobs were swapped.
+ */
+bool pd_exchange(Solution *S, Route *r1, Route *r2, const Criterion *c, Rng *rng);
+
+/**
  * Vehicle reduction: empty the route with the fewest jobs (the first such
  * route on ties) by moving each of its jobs, in the order of its job list, to
  * its best position for OBJ_VEHICLES in another route that serves a job: the

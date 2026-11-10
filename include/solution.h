@@ -54,16 +54,6 @@ bool reorder_route(Solution *solution, int route_id, double mu, double alpha);
 
 int count_vehicles(Solution *solution);
 
-MoveCost removal_cost(Solution *S, Route *r, int *job, double mu);
-
-MoveCost worst_cost_removal(Solution *S, Route *r, double mu);
-
-bool pd_shift(Solution *solution, Route *r1, Route *r2, double mu, double alpha);
-
-bool pd_exchange(Solution *solution, Route *r1, Route *r2, double mu, double alpha);
-
-bool pd_rearrange(Solution *solution, Route *r1, double mu, double alpha);
-
 double get_total_travel_cost(Solution* S);
 
 double get_total_schedule_duration(Solution* S);

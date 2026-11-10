@@ -159,182 +159,6 @@ void test_save_solution(void) {
     TEST_ASSERT_TRUE(save_solution(S));
 }
 
-void test_worst_cost_removal(void) {
-    PDPTW* P = read_pdptw_from_file("../data/pdp_100/lc102.txt");
-    Solution* S = create_solution(P);
-    insertion_heuristic(S, mu, alpha);
-    for (size_t i = 0; i < S->Nr; i++)
-    {
-        MoveCost cost = worst_cost_removal(S, S->routes[i], mu);
-        TEST_ASSERT_GREATER_OR_EQUAL(-BIG_M, cost.cost);
-        TEST_ASSERT_NOT_NULL(cost.job);
-    }
-}
-
-void test_worst_cost_removal_long(void) {
-    for (size_t i = 1; i < 9; i++)
-    {
-        // Compose file name
-        char filename[50];
-        sprintf(filename, "../data/pdp_100/lc10%ld.txt", i);
-        PDPTW* P = read_pdptw_from_file(filename);
-        Solution* S = create_solution(P);
-        insertion_heuristic(S, mu, alpha);
-        for (size_t i = 0; i < S->Nr; i++)
-        {
-            MoveCost cost = worst_cost_removal(S, S->routes[i], mu);
-            TEST_ASSERT_GREATER_OR_EQUAL(-BIG_M, cost.cost);
-            TEST_ASSERT_NOT_NULL(cost.job);
-        }
-    }
-}
-
-void test_pd_shift(void) {
-    PDPTW* P = read_pdptw_from_file("../data/pdp_100/lc108.txt");
-    Solution* S = create_solution(P);
-    insertion_heuristic(S, mu, alpha);
-    int r1_id = 1;
-    int r2_id = 2;
-    // Store r1 and r2 paths for the test
-    int r1[S->routes[r1_id]->n];
-    for (size_t i = 0; i < S->routes[r1_id]->n; i++)
-    {
-        r1[i] = S->routes[r1_id]->path[i];
-    }
-    int r2[S->routes[r2_id]->n];
-    for (size_t i = 0; i < S->routes[r2_id]->n; i++)
-    {
-        r2[i] = S->routes[r2_id]->path[i];
-    }
-
-    bool success = pd_shift(S, S->routes[r1_id], S->routes[r2_id], mu, alpha);
-    if (success)
-    {
-        // Compare route 1 path before and after the shift
-        int diff = 0;
-        for (size_t i = 0; i < S->routes[r1_id]->n; i++)
-        {
-            if (S->routes[r1_id]->path[i] != r1[i]) diff++;
-        }
-        TEST_ASSERT_EQUAL_INT(2, diff); // Two nodes (pickup and delivery) must
-                                        // have been removed from r1
-        // Compare route 2 path before and after the shift
-        diff = 0;
-        for (size_t i = 0; i < S->routes[r2_id]->n; i++)
-        {
-            if (S->routes[r2_id]->path[i] != r2[i]) diff++;
-        }
-        TEST_ASSERT_EQUAL_INT(2, diff); // Two nodes (pickup and delivery) must
-                                        // have been added to r2
-    }
-}
-
-void test_pd_exchange(void) {
-    PDPTW* P = read_pdptw_from_file("../data/pdp_100/lc104.txt");
-    Solution* S = create_solution(P);
-    int r1_id = 0;
-    int r2_id = 1;
-    // Create route 1 manually
-    for (size_t i = 0; i < 3; i++)
-    {
-        insert_job(S->routes[r1_id], P->jobs[i], i * 2 + 1, (i + 1) * 2);
-    }
-    update_route(P, S->routes[r1_id]);
-    // Check solution feasibility
-    TEST_ASSERT_TRUE(check_route(P, S->routes[r1_id]));
-    // Create route 2 manually. i + 6 returns a feasible route
-    for (size_t i = 0; i < 3; i++)
-    {
-        insert_job(S->routes[r2_id], P->jobs[i + 6], i * 2 + 1, (i + 1) * 2);
-    }
-    update_route(P, S->routes[r2_id]);
-    // Check solution feasibility
-    TEST_ASSERT_TRUE(check_route(P, S->routes[r2_id]));
-    // Store r1 and r2 paths for the test
-    int r1[S->routes[r1_id]->n];
-    for (size_t i = 0; i < S->routes[r1_id]->n; i++)
-    {
-        r1[i] = S->routes[r1_id]->path[i];
-    }
-    int r2[S->routes[r2_id]->n];
-    for (size_t i = 0; i < S->routes[r2_id]->n; i++)
-    {
-        r2[i] = S->routes[r2_id]->path[i];
-    }
-    // Try PD-exchange
-    bool success = pd_exchange(S, S->routes[r1_id], S->routes[r2_id], mu, alpha);
-    TEST_ASSERT_TRUE(success);
-    if (success)
-    {
-        // Compare route 1 path before and after the shift
-        int diff = 0;
-        for (size_t i = 1; i < S->routes[r1_id]->n - 1; i++)
-        {
-            for (size_t j = 1; j < S->routes[r1_id]->n - 1; j++)
-            {
-                if (S->routes[r1_id]->path[i] == r1[j]) {
-                    diff++;
-                    break;
-                }
-            }
-        }
-        TEST_ASSERT_EQUAL_INT(2, S->routes[r1_id]->n - diff - 2); // Two nodes (pickup and delivery) must
-                                        // have been removed from r1
-        // Compare route 2 path before and after the shift
-        diff = 0;
-        for (size_t i = 1; i < S->routes[r2_id]->n - 1; i++)
-        {
-            for (size_t j = 1; j < S->routes[r2_id]->n - 1; j++)
-            {
-                if (S->routes[r2_id]->path[i] == r2[j]) {
-                    diff++;
-                    break;
-                }
-            }
-        }
-        TEST_ASSERT_EQUAL_INT(2, S->routes[r2_id]->n - diff - 2); // Two nodes (pickup and delivery) must
-                                        // have been added to r2
-    }
-}
-
-void test_pd_rearrange(void) {
-    PDPTW* P = read_pdptw_from_file("../data/pdp_100/lc104.txt");
-    Solution* S = create_solution(P);
-    // Add three jobs to route 0
-    int r_id = 0;
-    for (size_t i = 0; i < 3; i++)
-    {
-        // printf("%d %d", P->jobs[2][0], P->jobs[2][1]);
-        insert_job(S->routes[r_id], P->jobs[i], i * 2 + 1, (i + 1) * 2);
-    }
-    // Check route feasibility
-    TEST_ASSERT_TRUE(check_route(P, S->routes[0]));
-    MoveCost c_removal = worst_cost_removal(S, S->routes[r_id], 1.0);
-    // Arbitrarily remove one node from route r_id
-    bool removed = remove_job(S->routes[r_id], c_removal.job);
-    // Store r1 and r2 paths for the test
-    int r1[S->routes[r_id]->n];
-    for (size_t i = 0; i < S->routes[r_id]->n; i++)
-    {
-        r1[i] = S->routes[r_id]->path[i];
-    }
-    // Try PD-Rearrange
-    bool success = pd_rearrange(S, S->routes[r_id], 1.0, 1.0);
-    TEST_ASSERT_TRUE(success);
-    if (success)
-    {
-        // Compare route 1 path before and after the shift
-        int diff = 0;
-        for (size_t i = 1; i < S->routes[r_id]->n - 1; i++)
-        {
-            if (S->routes[r_id]->path[i] != r1[i]) {
-                diff++;
-            }
-        }
-        TEST_ASSERT_GREATER_THAN(0, diff);
-    }
-}
-
 void test_solution_cost(void) {
     PDPTW* P = read_pdptw_from_file("../data/pdp_100/lc105.txt");
     Solution* S = create_solution(P);
@@ -375,7 +199,9 @@ void test_copy_solution(void) {
     }
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, route_id);
     int src_n_before = S->routes[route_id]->n;
-    pd_rearrange(C, C->routes[route_id], 1.0, 0.5);
+    TEST_ASSERT_TRUE(remove_job(C->routes[route_id], C->routes[route_id]->jobs[0]));
+    update_route(P, C->routes[route_id]);
+    TEST_ASSERT_EQUAL_INT(src_n_before - 2, C->routes[route_id]->n);
     TEST_ASSERT_EQUAL_INT(src_n_before, S->routes[route_id]->n);
     TEST_ASSERT_TRUE(fabs(cost_src - get_solution_cost(S, 1.0, 1.0, 1.0, 1.0)) < 1e-6);
 
@@ -691,11 +517,6 @@ int main(void) {
     RUN_TEST(test_save_solution);
     RUN_TEST(test_write_solution_to_path);
     RUN_TEST(test_write_solution_reports_unwritable_path);
-    RUN_TEST(test_worst_cost_removal);
-    RUN_TEST(test_worst_cost_removal_long);
-    RUN_TEST(test_pd_shift);
-    RUN_TEST(test_pd_exchange);
-    RUN_TEST(test_pd_rearrange);
     RUN_TEST(test_solution_cost);
     RUN_TEST(test_copy_solution);
     RUN_TEST(test_copy_is_independent_when_its_routes_grow);

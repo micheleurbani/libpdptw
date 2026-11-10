@@ -8,9 +8,8 @@ are not part of this library; they live in the projects that build on it.
 One static C99 library, no dependencies beyond libm:
 
 - **`vrp_core`** — the `PDPTW` instance, `Route`, and `Solution` data
-  structures, the Modified Solomon insertion heuristic, and the PD operators
-  (`pd_shift`, `pd_exchange`, `pd_rearrange`, `insert_job`, `remove_job`, …).
-  Also:
+  structures, the Modified Solomon insertion heuristic, and the structural
+  ops (`insert_job`, `remove_job`, …). Also:
   - `rng.h`: a seeded PCG32 generator (`rng_seed`, `rng_next`, `rng_below`).
     Its state is passed explicitly, so there is no global generator and no
     `rand()`. PCG is vendored unmodified in `lib/pcg` (see its README for the
@@ -41,7 +40,18 @@ One static C99 library, no dependencies beyond libm:
     `vehicle_reduction` empties the route with the fewest jobs into the
     other routes that serve a job, each job at the position that adds the
     least route duration, and repeats until a route can't be emptied, which
-    it then restores as it was. It never opens a route.
+    it then restores as it was. It never opens a route. Li & Lim's (2003)
+    PD operators take two routes, a criterion and an `Rng`: `pd_shift`
+    moves a job of the first route, drawn from the `Rng`, to its best
+    position in the second, and `pd_exchange` swaps a drawn job of each
+    route, the first route's job going first to its best position in the
+    second route, then the second's to its best position in the first. Both
+    move nothing, and draw nothing, when a route they take a job from is
+    empty or the two routes are one. Li & Lim's PD-rearrange is not here:
+    moving a job within its route is what `random_rearrange` does. Every
+    operator here leaves fresh caches on the routes it touches, and takes
+    back a move in which a job fits nowhere, restoring the routes as they
+    were, paths and job lists alike.
   - `crossover.h`: `crossover`, which builds an offspring from two
     solutions: k ~ U[1, n − 1] of the first parent's n routes, the second
     parent's routes that share no job with them while the fleet has an
@@ -100,6 +110,7 @@ target_link_libraries(your_target PRIVATE libpdptw::vrp_core)
 ```c
 #include "problem.h"
 #include "solution.h"
+#include "rearrange.h"
 
 PDPTW* problem = read_pdptw_from_file("instance.txt");   // Li & Lim text format,
                                                            // or build a PDPTW*
@@ -108,9 +119,12 @@ PDPTW* problem = read_pdptw_from_file("instance.txt");   // Li & Lim text format
 Solution* S = create_solution(problem);
 insertion_heuristic(S, /*mu=*/1.0, /*alpha=*/0.5);
 
-Solution* neighbour = copy_solution(S);   // mutate the copy with the PD
-                                           // operators, then update_route and
-                                           // check_route each touched route
+Rng rng;
+rng_seed(&rng, 42);
+const Criterion c = objective_criterion(OBJ_DISTANCE);
+Solution* neighbour = copy_solution(S);   // mutate the copy with an operator,
+pd_shift(neighbour, neighbour->routes[0], // which keeps the caches of the
+         neighbour->routes[1], &c, &rng); // routes it touches fresh
 
 save_solution_to(S, "out/");               // Li & Lim .sol template, named
                                            // after the instance
@@ -135,9 +149,10 @@ entries, into one block.
   pairing pickup↔delivery nodes.
 - **`Route`** (`route.h`) — a vehicle path plus *cached cumulative metrics*
   (`D`, `T`, `b` service-begin, `Q` load, `wait`, `slack`). These caches are
-  **not** kept current by the structural ops (`pd_shift`, `insert_job`, …) —
+  **not** kept current by the structural ops (`insert_job`, `remove_job`, …) —
   call `update_route` to recompute them and `check_route` to validate
-  feasibility before reading any cost off a mutated route.
+  feasibility before reading any cost off a mutated route. The operators of
+  `rearrange.h` and `crossover` do refresh the routes they touch.
   Only the first `n` path and cache entries and the first `njobs` jobs are
   live; nothing beyond them is kept or copied. `capacity` is how many nodes
   the arrays hold now, not a fixed `N + 2`: `create_solution` makes routes of
